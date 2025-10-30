@@ -20,7 +20,7 @@
         <div class="container">
             <div class="row">
                 <div class="col-12">
-                    <h1 class="hero-title">SELAMAT DATANG<br>DI LAYANAN FASILITASI PENDAFTARAN MEREK GRATIS</h1>
+                    <h1 class="hero-title">SELAMAT DATANG<br>LAYANAN FASILITASI PENDAFTARAN MEREK GRATIS</h1>
                     <p class="hero-subtitle">DINAS PERINDUSTRIAN DAN PERDAGANGAN KABUPATEN SIDOARJO</p>
                     <a class="btn-register" data-bs-toggle="modal" data-bs-target="#daftarModal">DAFTAR MEREK SEKARANG!</a>
                 </div>
