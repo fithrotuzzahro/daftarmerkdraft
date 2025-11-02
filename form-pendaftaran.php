@@ -63,7 +63,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         foreach ($produk_data as $produk) {
             $hasil_produk[] = $produk['nama'];
-            $kapasitas_produk[] = $produk['nama'] . ": " . $produk['jumlah'] . " unit/bulan";
+            $kapasitas_produk[] = $produk['nama'] . ": " . $produk['jumlah'] . "/bulan";
             $omset_perbulan[] = $produk['nama'] . ": Rp " . number_format($produk['omset'], 0, ',', '.');
         }
 
@@ -102,32 +102,45 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt2->execute([$NIK, $id_usaha, $tgl_daftar, $status_validasi]);
         $id_pendaftaran = $pdo->lastInsertId();
 
-        // ===== 3. Upload file helper function =====
-        function uploadFile($fileInputName, $folder = 'uploads/')
-        {
-            if (!file_exists($folder)) {
-                mkdir($folder, 0777, true);
-            }
+        // ===== 3. Upload file helper function (UPDATED) =====
+function uploadFile($fileInputName, $NIK, $fileType, $folder = 'uploads/')
+{
+    // Tentukan subfolder berdasarkan tipe file
+    $subFolder = '';
+    switch ($fileType) {
+        case 'logo':
+            $subFolder = 'logo/';
+            break;
+        default:
+            $subFolder = '';
+    }
+    
+    // Format: uploads/(tipeFile)/(tipeFile)_NIK/
+    $finalFolder = $folder . $subFolder . $fileType . '_' . $NIK . '/';
+    
+    if (!file_exists($finalFolder)) {
+        mkdir($finalFolder, 0777, true);
+    }
 
-            if (isset($_FILES[$fileInputName]) && !empty($_FILES[$fileInputName]['name'])) {
-                $file_extension = strtolower(pathinfo($_FILES[$fileInputName]['name'], PATHINFO_EXTENSION));
-                $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
+    if (isset($_FILES[$fileInputName]) && !empty($_FILES[$fileInputName]['name'])) {
+        $file_extension = strtolower(pathinfo($_FILES[$fileInputName]['name'], PATHINFO_EXTENSION));
+        $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
 
-                if (!in_array($file_extension, $allowed_extensions)) {
-                    throw new Exception("Format file tidak diizinkan untuk {$fileInputName}");
-                }
-
-                $filename = time() . "_" . uniqid() . "." . $file_extension;
-                $target = $folder . $filename;
-
-                if (move_uploaded_file($_FILES[$fileInputName]['tmp_name'], $target)) {
-                    return $target;
-                } else {
-                    throw new Exception("Gagal mengupload file {$fileInputName}");
-                }
-            }
-            return null;
+        if (!in_array($file_extension, $allowed_extensions)) {
+            throw new Exception("Format file tidak diizinkan untuk {$fileInputName}");
         }
+
+        $filename = time() . "_" . uniqid() . "." . $file_extension;
+        $target = $finalFolder . $filename;
+
+        if (move_uploaded_file($_FILES[$fileInputName]['tmp_name'], $target)) {
+            return $target;
+        } else {
+            throw new Exception("Gagal mengupload file {$fileInputName}");
+        }
+    }
+    return null;
+}
 
         // ===== 4. Simpan ke tabel merek =====
         $kelas_merek = trim($_POST['kelas_merek']);
@@ -135,98 +148,144 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $nama_merek2 = trim($_POST['nama_merek2']);
         $nama_merek3 = trim($_POST['nama_merek3']);
 
-        $logo1 = uploadFile('logo1', 'uploads/logo/');
-        $logo2 = uploadFile('logo2', 'uploads/logo/');
-        $logo3 = uploadFile('logo3', 'uploads/logo/');
+$logo1 = uploadFile('logo1', $NIK, 'logo', 'uploads/');
+$logo2 = uploadFile('logo2', $NIK, 'logo', 'uploads/');
+$logo3 = uploadFile('logo3', $NIK, 'logo', 'uploads/');
 
         $stmt3 = $pdo->prepare("INSERT INTO merek (id_pendaftaran, kelas_merek, nama_merek1, nama_merek2, nama_merek3, logo1, logo2, logo3)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt3->execute([$id_pendaftaran, $kelas_merek, $nama_merek1, $nama_merek2, $nama_merek3, $logo1, $logo2, $logo3]);
 
         // ===== 5. Simpan ke tabel lampiran =====
-        function uploadMultipleFiles($inputName, $id_jenis_file, $id_pendaftaran, $pdo)
-        {
-            if (isset($_FILES[$inputName]) && !empty($_FILES[$inputName]['name'][0])) {
-                $folder = "uploads/lampiran/";
-                if (!file_exists($folder)) {
-                    mkdir($folder, 0777, true);
-                }
+function uploadMultipleFiles($inputName, $id_jenis_file, $id_pendaftaran, $pdo, $NIK, $fileType, $isRequired = false)
+{
+    // Cek apakah input file ada dan tidak kosong
+    if (!isset($_FILES[$inputName]) || empty($_FILES[$inputName]['name'])) {
+        if ($isRequired) {
+            throw new Exception("File untuk {$inputName} wajib diupload!");
+        }
+        return;
+    }
 
-                $total_files = count($_FILES[$inputName]['name']);
+    // Cek apakah ada file yang benar-benar diupload
+    if (empty($_FILES[$inputName]['name'][0])) {
+        if ($isRequired) {
+            throw new Exception("File untuk {$inputName} wajib diupload!");
+        }
+        return;
+    }
 
-                for ($i = 0; $i < $total_files; $i++) {
-                    if (!empty($_FILES[$inputName]['name'][$i])) {
-                        $file_extension = strtolower(pathinfo($_FILES[$inputName]['name'][$i], PATHINFO_EXTENSION));
-                        $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
+    // Tentukan base folder berdasarkan id_jenis_file
+    $baseFolder = '';
+    switch ($id_jenis_file) {
+        case 1: // NIB
+            $baseFolder = "uploads/nib/nib_{$NIK}/";
+            break;
+        case 2: // Foto Produk
+            $baseFolder = "uploads/fotoproduk/fotoproduk_{$NIK}/";
+            break;
+        case 3: // Proses Produksi
+            $baseFolder = "uploads/prosesproduksi/prosesproduksi_{$NIK}/";
+            break;
+        case 9: // P-IRT
+            $baseFolder = "uploads/legalitas/PIRT_{$NIK}/";
+            break;
+        case 10: // BPOM-MD
+            $baseFolder = "uploads/legalitas/BPOMMD_{$NIK}/";
+            break;
+        case 11: // HALAL
+            $baseFolder = "uploads/legalitas/HALAL_{$NIK}/";
+            break;
+        case 12: // NUTRITION FACTS
+            $baseFolder = "uploads/legalitas/NUTRITIONFACTS_{$NIK}/";
+            break;
+        case 13: // SNI
+            $baseFolder = "uploads/legalitas/SNI_{$NIK}/";
+            break;
+        case 14: // Legalitas Lainnya
+            $baseFolder = "uploads/legalitas/Lainnya_{$NIK}/";
+            break;
+        default:
+            $baseFolder = "uploads/lampiran/lampiran_{$NIK}/";
+            break;
+    }
 
-                        if (!in_array($file_extension, $allowed_extensions)) {
-                            throw new Exception("Format file tidak diizinkan pada {$inputName}");
-                        }
+    // Pastikan folder utama ada
+    if (!file_exists($baseFolder)) {
+        mkdir($baseFolder, 0777, true);
+    }
 
-                        // Cek ukuran file
-                        $max_size = ($id_jenis_file == 1) ? 10 * 1024 * 1024 : 1 * 1024 * 1024;
-                        if ($_FILES[$inputName]['size'][$i] > $max_size) {
-                            throw new Exception("Ukuran file {$_FILES[$inputName]['name'][$i]} melebihi batas maksimal");
-                        }
+    $total_files = count($_FILES[$inputName]['name']);
 
-                        $filename = time() . "_" . uniqid() . "_" . $i . "." . $file_extension;
-                        $target = $folder . $filename;
+    for ($i = 0; $i < $total_files; $i++) {
+        if (!empty($_FILES[$inputName]['name'][$i])) {
+            $file_extension = strtolower(pathinfo($_FILES[$inputName]['name'][$i], PATHINFO_EXTENSION));
+            $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
 
-                        if (move_uploaded_file($_FILES[$inputName]['tmp_name'][$i], $target)) {
-                            $tgl_upload = date('Y-m-d H:i:s');
-                            $stmt = $pdo->prepare("INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path)
-                                                   VALUES (?, ?, ?, ?)");
-                            $stmt->execute([$id_pendaftaran, $id_jenis_file, $tgl_upload, $target]);
-                        } else {
-                            throw new Exception("Gagal mengupload file {$_FILES[$inputName]['name'][$i]}");
-                        }
-                    }
-                }
+            if (!in_array($file_extension, $allowed_extensions)) {
+                throw new Exception("Format file tidak diizinkan pada {$inputName}");
+            }
+
+            $max_size = ($id_jenis_file == 1) ? 10 * 1024 * 1024 : 1 * 1024 * 1024;
+            if ($_FILES[$inputName]['size'][$i] > $max_size) {
+                throw new Exception("Ukuran file {$_FILES[$inputName]['name'][$i]} melebihi batas maksimal");
+            }
+
+            $filename = time() . "_" . uniqid() . "_" . $i . "." . $file_extension;
+            $target = $baseFolder . $filename;
+
+            if (move_uploaded_file($_FILES[$inputName]['tmp_name'][$i], $target)) {
+                $tgl_upload = date('Y-m-d H:i:s');
+                $stmt = $pdo->prepare("INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path)
+                       VALUES (?, ?, ?, ?)");
+                $stmt->execute([$id_pendaftaran, $id_jenis_file, $tgl_upload, $target]);
+            } else {
+                throw new Exception("Gagal mengupload file {$_FILES[$inputName]['name'][$i]}");
             }
         }
+    }
+}
 
-        // Upload lampiran NIB
-        uploadMultipleFiles('nib_files', 1, $id_pendaftaran, $pdo);
-
-        // Upload lampiran legalitas lainnya
+uploadMultipleFiles('nib_files', 1, $id_pendaftaran, $pdo, $NIK, 'nib', true);
+        // Upload lampiran legalitas lainnya (resmi)
         if (isset($_POST['legalitas']) && is_array($_POST['legalitas'])) {
-            $legalitas_map = [
-                'P-IRT' => 9,
-                'BPOM-MD' => 10,
-                'HALAL' => 11,
-                'NUTRITION FACTS' => 12,
-                'SNI' => 13
-            ];
+    $legalitas_map = [
+        'P-IRT' => 9,
+        'BPOM-MD' => 10,
+        'HALAL' => 11,
+        'NUTRITION FACTS' => 12,
+        'SNI' => 13
+    ];
 
-            foreach ($_POST['legalitas'] as $index => $legal) {
-                $inputName = 'legalitas_files_' . $index;
+    $checkboxIndexMap = [
+        'P-IRT' => 0,
+        'BPOM-MD' => 1,
+        'HALAL' => 2,
+        'NUTRITION FACTS' => 3,
+        'SNI' => 4
+    ];
 
-                // Tentukan id_jenis_file berdasarkan nama legalitas
-                $id_jenis_file = 14; // Default untuk legalitas lainnya
+    foreach ($_POST['legalitas'] as $legal) {
+        $realIndex = $checkboxIndexMap[$legal] ?? 0;
+        $inputName = 'legalitas_files_' . $realIndex;
+        $id_jenis_file = $legalitas_map[$legal] ?? 14;
 
-                if (isset($legalitas_map[$legal])) {
-                    $id_jenis_file = $legalitas_map[$legal];
-                }
+        // Upload - folder akan dibuat otomatis
+        uploadMultipleFiles($inputName, $id_jenis_file, $id_pendaftaran, $pdo, $NIK, 'legalitas', true);
+    }
+}
 
-                uploadMultipleFiles($inputName, $id_jenis_file, $id_pendaftaran, $pdo);
-            }
-        }
-
-        // Upload legalitas lainnya (yang diinput manual)
+        // Upload legalitas lainnya (input manual)
         if (isset($_POST['legalitas_lain']) && !empty(trim($_POST['legalitas_lain']))) {
-            // Cek apakah ada file untuk legalitas lain
-            $legalitas_lain_index = count($_POST['legalitas'] ?? []);
-            $inputName = 'legalitas_files_lain';
+    $inputName = 'legalitas_files_lain';
+    uploadMultipleFiles($inputName, 14, $id_pendaftaran, $pdo, $NIK, 'legalitas', true);
+}
 
-            // Buat input khusus untuk legalitas lainnya jika ada file
-            if (isset($_FILES[$inputName]) && !empty($_FILES[$inputName]['name'][0])) {
-                uploadMultipleFiles($inputName, 14, $id_pendaftaran, $pdo); // 14 = Legalitas Lainnya
-            }
-        }
 
         // Upload foto produk dan proses
-        uploadMultipleFiles('foto_produk', 2, $id_pendaftaran, $pdo);
-        uploadMultipleFiles('foto_proses', 3, $id_pendaftaran, $pdo);
+uploadMultipleFiles('foto_produk', 2, $id_pendaftaran, $pdo, $NIK, 'fotoproduk', true);
+uploadMultipleFiles('foto_proses', 3, $id_pendaftaran, $pdo, $NIK, 'prosesproduksi', true);
+
 
         // Commit transaction
         $pdo->commit();
@@ -267,166 +326,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="assets/css/form-pendaftaran.css">
-
-    <style>
-        /* Alert info tambahan */
-        .alert-info-pendaftaran {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        .alert-info-pendaftaran strong {
-            font-size: 1.1rem;
-        }
-
-        .alert-info-pendaftaran p {
-            margin-bottom: 0;
-            margin-top: 0.5rem;
-            font-size: 0.95rem;
-            opacity: 0.95;
-        }
-
-        /* Tabel Produk */
-        .produk-table {
-            width: 100%;
-            margin-bottom: 1rem;
-        }
-
-        .produk-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            padding: 0.75rem;
-            border: 1px solid #dee2e6;
-        }
-
-        .produk-table td {
-            padding: 0.5rem;
-            border: 1px solid #dee2e6;
-            vertical-align: middle;
-        }
-
-        .produk-table input {
-            width: 100%;
-            border: 1px solid #ced4da;
-            border-radius: 0.375rem;
-            padding: 0.375rem 0.75rem;
-        }
-
-        .produk-table .btn-sm {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.875rem;
-        }
-
-        /* Preview Image Styles */
-        .preview-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 10px;
-            padding: 10px;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            background-color: #f8f9fa;
-            min-height: 60px;
-        }
-
-        .preview-container:empty {
-            display: none;
-        }
-
-        .preview-item {
-            position: relative;
-            width: 120px;
-        }
-
-        .preview-item img {
-            width: 120px;
-            height: 120px;
-            object-fit: cover;
-            border-radius: 8px;
-            border: 2px solid #dee2e6;
-        }
-
-        .preview-item .pdf-preview {
-            width: 120px;
-            height: 120px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid #dee2e6;
-            border-radius: 8px;
-            background: white;
-        }
-
-        .preview-item .pdf-preview i {
-            font-size: 3rem;
-            color: #dc3545;
-            margin-bottom: 8px;
-        }
-
-        .preview-item .remove-preview {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 28px;
-            height: 28px;
-            cursor: pointer;
-            font-size: 18px;
-            line-height: 1;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-            z-index: 10;
-        }
-
-        .preview-item .remove-preview:hover {
-            background: #c82333;
-        }
-
-        /* Drag & Drop Styles */
-        .file-drop-zone {
-            border: 2px dashed #ced4da;
-            border-radius: 8px;
-            padding: 2rem;
-            text-align: center;
-            background-color: #f8f9fa;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .file-drop-zone:hover,
-        .file-drop-zone.drag-over {
-            border-color: #667eea;
-            background-color: #e7f1ff;
-        }
-
-        .file-drop-zone i {
-            font-size: 3rem;
-            color: #6c757d;
-            margin-bottom: 1rem;
-        }
-
-        .legalitas-upload-section {
-            background-color: #f8f9fa;
-            padding: 1rem;
-            border-radius: 8px;
-            margin-top: 1rem;
-            border: 1px solid #dee2e6;
-        }
-
-        .legalitas-upload-section h6 {
-            color: #495057;
-            margin-bottom: 0.75rem;
-        }
-    </style>
 </head>
 
 <body>
@@ -533,7 +432,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label-alamat">RT/RW</label>
-                                <input type="text" name="rt_rw" class="form-control" placeholder="Contoh: 003/005" pattern="\d{3}/\d{3}" title="Format: xxx/xxx (contoh: 003/005)">
+                                <input type="text" name="rt_rw" id="rt_rw" class="form-control" placeholder="Contoh: 003/005">
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label-alamat">Kelurahan/Desa <span class="text-danger">*</span></label>
@@ -546,51 +445,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 <input type="tel" name="no_telp_perusahaan" class="form-control" placeholder="Kosongi jika tidak ada atau sama dengan nomor telepon pemilik">
                             </div>
                         </div>
-
-                        <script>
-                            // Data kelurahan/desa per kecamatan di Sidoarjo
-                            const desaKelurahan = {
-                                "Sidoarjo": ["Sidoarjo", "Lemahputro", "Magersari", "Gebang", "Celep", "Bulusidokare", "Urangagung", "Banjarbendo", "Blurukidul", "Cemengbakalan", "Jati", "Kemiri", "Lebo", "Rangkalkidul", "Sarirogo", "Suko", "Sumput", "Cemengkalan", "Pekawuman", "Pucang", "Pucanganom", "Sekardangan", "Sidoklumpuk", "Sidokumpul"],
-                                "Buduran": ["Buduran", "Sawohan", "Siwalanpanji", "Prasung", "Banjarkemantren", "Banjarsari", "Damarsi", "Dukuhtengah", "Entalsewu", "Pagerwojo", "Sidokerto", "Sidomulyo", "Sidokepung", "Sukorejo", "Wadungasin"],
-                                "Candi": ["Candi", "Durungbanjar", "Larangan", "Sumokali", "Sepande", "Kebonsari", "Kedensari", "Bligo", "Balongdowo", "Balonggabus", "Durungbanjar", "Durungbedug", "Gelam", "Jambangan", "Kalipecabean", "Karangtanjung", "Kebonsari", "Kedungkendo", "Kedungpeluk", "Kendalpencabean", "Klurak", "Ngampelsari", "Sidodadi", "Sugihwaras", "Sumorame", "Tenggulunan", "Wedoroklurak"],
-                                "Porong": ["Porong", "Kebonagung", "Kesambi", "Plumbon", "Pesawahan", "Gedang", "Juwetkenongo", "Kedungboto", "Wunut", "Pamotan", "Kebakalan", "Gempol Pasargi", "Glagaharum", "Lajuk", "Candipari"],
-                                "Krembung": ["Krembung", "Balanggarut", "Cangkring", "Gading", "Jenggot", "Kandangan", "Kedungrawan", "Kedungsumur", "Keperkeret", "Lemujut", "Ploso", "Rejeni", "Tambakrejo", "Tanjekwagir", "Wangkal", "Wonomlati", "Waung", "Mojoruntut"],
-                                "Tulangan": ["Tulangan", "Jiken", "Kajeksan", "Kebaran", "Kedondong", "Kepatihan", "Kepunten", "Medalem", "Pangkemiri", "Sudimoro", "Tlasih", "Gelang", "Kepadangan", "Grabagan", "Singopadu", "Kemantren", "Janti", "Modong", "Grogol", "Kenongo", "Grinting"],
-                                "Tanggulangin": ["kalisampurno", "kedensari", "Ganggang Pnjang", "Randegan", "Kalitengah", "Kedung Banteng", "Putat", "Ketapang", "Kalidawir", "Ketegan", "Banjar Panji", "Gempolsari", "Sentul", "Penatarsewu", "Banjarsari", "Ngaban", "Boro", "Kludan"],
-                                "Jabon": ["Trompoasri", "Kedung Pandan", "Permisan", "Semambung", "Pangrih", "Kupang", "Tambak Kalisogo", "Kedungrejo", "Kedungcangkring", "Keboguyang", "Jemirahan", "Balongtani", "dukuhsari"],
-                                "Krian": ["Sidomojo", "Sidomulyo", "Sidorejo", "Tempel", "Terik", "Terungkulon", "Terungwetan", "Tropodo", "Watugolong", "Krian", "Kemasan", "Tambakkemeraan", "Sedenganmijen", "Bareng Krajan", "Keraton", "Keboharan", "Katerungan", "Jeruk Gamping", "Junwangi", "Jatikalang", "Gamping", "Ponokawan"],
-                                "Balongbendo": ["Balongbendo", "", "WonoKupang", "Kedungsukodani", "Kemangsen", "Penambangan", "Seduri", "Seketi", "Singkalan", "SumoKembangsri", "Waruberon", "Watesari", "Wonokarang", "Jeruklegi", "Jabaran", "Suwaluh", "Gadungkepuhsari", "Bogempinggir", "Bakungtemenggungan", "Bakungpringgodani", "Wringinpitu", "Bakalan"],
-                                "Wonoayu": ["Becirongengor", "Candinegoro", "Jimbaran Kulon", "Jimbaran wetan", "Pilang", "Karangturi", "Ketimang", "Lambangan", "Mohorangagung", "Mulyodadi", "Pagerngumbuk", "Plaosan", "Ploso", "Popoh", "Sawocangkring", "semambung", "Simoangin-angin", "Simoketawang", "Sumberejo", "Tanggul", "Wonoayu", "Wonokalang", "Wonokasian"],
-                                "Tarik": ["Tarik", "Klantingsari", "GedangKlutuk", "Mergosari", "Kedinding", "Kemuning", "Janti", "Mergobener", "Mliriprowo", "Singogalih", "Kramat Temenggung", "Kedungbocok", "Segodobancang", "Gampingrowo", "Mindugading", "Kalimati", "Banjarwungu", "Balongmacekan", "Kendalsewu", "Sebani"],
-                                "Prambon": ["Prambon", "Bendotretek", "Bulang", "Cangkringturi", "Gampang", "Gedangrowo", "Jati alun-alun", "Watutulis", "jatikalang", "jedongcangkring", "Kajartengguli", "Kedungkembanr", "Kedung Sugo", "Kedungwonokerto", "Penjangkkungan", "Simogirang", "Simpang", "Temu", "Wirobiting", "Wonoplintahan"],
-                                "Taman": ["Taman", "Trosobo", "Sepanjang", "Ngelom", "Ketegan", "Jemundo", "Geluran", "Wage", "Bebekan", "Kalijaten", "Tawangsari", "Sidodadi", "Sambibulu", "Sadang", "Maduretno", "Krembangan", "Pertapan", "Kramatjegu", "Kletek", "Tanjungsari", "Kedungturi", "Gilang", "Bringinbendo", "Bohar", "Wonocolo"],
-                                "Waru": ["Waru", "Tropodo", "Kureksari", "Jambangan", "Medaeng", "Berbek", "Bungurasih", "Janti", "Kedungrejo", "Kepuhkiriman", "Ngingas", "Pepelegi", "Tambakoso", "Tambakrejo", "Tambahsawah", "Tambaksumur", "Wadungasri", "Wedoro"],
-                                "Gedangan": ["Gedangan", "Ketajen", "Wedi", "Bangah", "Sawotratap", "Semambung", "Ganting", "Tebel", "Kebonanom", "Gemurung", "Karangbong", "Kebiansikep", "Kragan", "Punggul", "Seruni"],
-                                "Sedati": ["Sedati", "Pabean", "Semampir", "Banjarkemuningtambak", "Pulungan", "Betro", "Segoro Tambak", "Gisik Cemandi", "Cemandi", "Kalanganyar", "Buncitan", "Wangsan", "Pranti", "Pepe", "Sedatiagung", "Sedatigede", "Tambakcemandi"],
-                                "Sukodono": ["Sukodono", "Jumputrejo", "Kebonagung", "Keloposepuluh", "Jogosatru", "Suruh", "Ngaresrejo", "Cangkringsari", "Masangan Wetan", "Masangan Kulon", "Bangsri", "Anggaswangi", "Pandemonegoro", "Panjunan", "Pekarungan", "Plumbungan", "Sambungrejo", "Suko", "Wilayut"]
-                            };
-
-                            // Event listener untuk perubahan kecamatan
-                            document.getElementById('kecamatan').addEventListener('change', function() {
-                                const kecamatan = this.value;
-                                const kelDesaSelect = document.getElementById('kel_desa');
-
-                                // Reset dropdown kelurahan/desa
-                                kelDesaSelect.innerHTML = '<option value="">-- Pilih Kelurahan/Desa --</option>';
-
-                                if (kecamatan && desaKelurahan[kecamatan]) {
-                                    desaKelurahan[kecamatan].forEach(function(desa) {
-                                        const option = document.createElement('option');
-                                        option.value = desa;
-                                        option.textContent = desa;
-                                        kelDesaSelect.appendChild(option);
-                                    });
-                                    kelDesaSelect.disabled = false;
-                                } else {
-                                    kelDesaSelect.disabled = true;
-                                }
-                            });
-                        </script>
                         <div class="mb-3">
                             <label class="form-label">Produk, Kapasitas Produksi, dan Omset <span class="text-danger">*</span></label>
                             <p class="text-muted small">Isi data produk yang dihasilkan beserta kapasitas produksi per bulan, harga satuan, dan omset akan dihitung otomatis</p>
@@ -659,8 +513,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <div class="file-drop-zone" id="nibDropZone">
                                 <i class="fas fa-cloud-upload-alt"></i>
                                 <p><strong>Seret & Lepas file di sini</strong><br>atau klik untuk memilih file</p>
-                                <small>Upload maksimal 5 file (PDF atau image). Maks 10 MB per file</small>
-                                <input type="file" name="nib_files[]" id="nib-file" accept=".pdf,.jpg,.jpeg,.png" multiple hidden>
+                                <small>Upload maksimal 5 file PDF. Maks 10 MB per file</small>
+                                <input type="file" name="nib_files[]" id="nib-file" accept=".pdf" multiple hidden>
                             </div>
                             <div class="preview-container" id="nibPreview"></div>
                         </div>
@@ -668,12 +522,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <div class="mb-3">
                             <label class="form-label">Legalitas/Standardisasi yang telah dimiliki</label>
                             <div class="row">
-                                <div class="col-md-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input legalitas-checkbox" type="checkbox" name="legalitas[]" value="NIB" id="nib">
-                                        <label class="form-check-label" for="nib">NIB</label>
-                                    </div>
-                                </div>
                                 <div class="col-md-3">
                                     <div class="form-check">
                                         <input class="form-check-input legalitas-checkbox" type="checkbox" name="legalitas[]" value="P-IRT" id="pirt">
@@ -754,8 +602,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 </a>
                             </div>
 
-                            <textarea name="kelas_merek" class="form-control mt-2" rows="3"
-                                placeholder="Tentukan Kelas Merek (cek 'Sistem Klasifikasi Merek' di Google)" required></textarea>
+                            <input type="text" name="kelas_merek" class="form-control mt-2"
+                                placeholder="Tentukan Kelas Merek (cek 'Sistem Klasifikasi Merek' di Google)" required>
                         </div>
 
                         <!-- Modal Sistem Klasifikasi Merek -->
@@ -896,549 +744,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-    <script>
-        document.getElementById('addProdukRow').addEventListener('click', function() {
-            const tbody = document.getElementById('produkTableBody');
-            const newRow = document.createElement('tr');
-            newRow.innerHTML = `
-                <td><input type="text" class="form-control form-control-sm produk-nama" placeholder="Contoh: Minuman Sinom Botol" required></td>
-                <td><input type="number" class="form-control form-control-sm produk-jumlah" placeholder="50" min="1" required></td>
-                <td><input type="number" class="form-control form-control-sm produk-harga" placeholder="5000" min="0" required></td>
-                <td>
-                    <input type="text" class="form-control form-control-sm produk-omset bg-light" readonly value="Rp 0">
-                </td>
-                <td class="text-center">
-                    <button type="button" class="btn btn-danger btn-sm remove-produk">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(newRow);
-            updateRemoveButtons();
-            attachCalculationListeners();
-        });
-
-        document.getElementById('produkTableBody').addEventListener('click', function(e) {
-            if (e.target.classList.contains('remove-produk') || e.target.parentElement.classList.contains('remove-produk')) {
-                const button = e.target.classList.contains('remove-produk') ? e.target : e.target.parentElement;
-                button.closest('tr').remove();
-                updateRemoveButtons();
-                calculateTotalOmset();
-            }
-        });
-
-        function updateRemoveButtons() {
-            const rows = document.querySelectorAll('#produkTableBody tr');
-            rows.forEach((row, index) => {
-                const removeBtn = row.querySelector('.remove-produk');
-                if (rows.length === 1) {
-                    removeBtn.disabled = true;
-                } else {
-                    removeBtn.disabled = false;
-                }
-            });
-        }
-
-        // ===== PERHITUNGAN OMSET =====
-        function calculateRowOmset(row) {
-            const jumlah = parseFloat(row.querySelector('.produk-jumlah').value) || 0;
-            const harga = parseFloat(row.querySelector('.produk-harga').value) || 0;
-            const omset = jumlah * harga;
-
-            row.querySelector('.produk-omset').value = 'Rp ' + omset.toLocaleString('id-ID');
-
-            calculateTotalOmset();
-        }
-
-        function calculateTotalOmset() {
-            const rows = document.querySelectorAll('#produkTableBody tr');
-            let total = 0;
-
-            rows.forEach(row => {
-                const jumlah = parseFloat(row.querySelector('.produk-jumlah').value) || 0;
-                const harga = parseFloat(row.querySelector('.produk-harga').value) || 0;
-                total += (jumlah * harga);
-            });
-
-            document.getElementById('totalOmset').textContent = 'Rp ' + total.toLocaleString('id-ID');
-        }
-
-        function attachCalculationListeners() {
-            const rows = document.querySelectorAll('#produkTableBody tr');
-            rows.forEach(row => {
-                const jumlahInput = row.querySelector('.produk-jumlah');
-                const hargaInput = row.querySelector('.produk-harga');
-
-                jumlahInput.removeEventListener('input', () => calculateRowOmset(row));
-                hargaInput.removeEventListener('input', () => calculateRowOmset(row));
-
-                jumlahInput.addEventListener('input', () => calculateRowOmset(row));
-                hargaInput.addEventListener('input', () => calculateRowOmset(row));
-            });
-        }
-
-        // Attach listeners untuk baris pertama
-        attachCalculationListeners();
-
-        // ===== RT/RW FORMAT AUTO =====
-        document.querySelector('input[name="rt_rw"]').addEventListener('input', function(e) {
-            let value = e.target.value.replace(/[^0-9]/g, '');
-
-            if (value.length >= 3) {
-                value = value.substring(0, 3) + '/' + value.substring(3, 6);
-            }
-
-            e.target.value = value;
-        });
-    </script>
-
-    <!-- ===== NEW FILE UPLOAD HANDLER WITH STORAGE ===== -->
-    <script>
-        // ===== FILE STORAGE SYSTEM =====
-        const fileStorage = {
-            'nib_files': [],
-            'foto_produk': [],
-            'foto_proses': [],
-            'logo1': [],
-            'logo2': [],
-            'logo3': []
-        };
-
-        // Fungsi untuk format ukuran file
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-        }
-
-        // Fungsi untuk handle file input dengan akumulasi file
-        function handleFileInput(inputElement, storageKey, previewContainerId, maxFiles = 5) {
-            const files = Array.from(inputElement.files);
-
-            // Cek jumlah total file
-            if (fileStorage[storageKey].length + files.length > maxFiles) {
-                alert(`Maksimal ${maxFiles} file untuk ${storageKey.replace(/_/g, ' ')}`);
-                inputElement.value = '';
-                return;
-            }
-
-            // Tambahkan file baru ke storage
-            files.forEach(file => {
-                const exists = fileStorage[storageKey].some(f =>
-                    f.name === file.name && f.size === file.size
-                );
-                if (!exists) {
-                    fileStorage[storageKey].push(file);
-                }
-            });
-
-            // Update preview
-            updateFilePreview(storageKey, previewContainerId);
-            inputElement.value = '';
-        }
-
-        // Fungsi untuk update preview file
-        function updateFilePreview(storageKey, containerId) {
-            const container = document.getElementById(containerId);
-            if (!container) return;
-
-            container.innerHTML = '';
-
-            if (fileStorage[storageKey].length === 0) {
-                container.style.display = 'none';
-                return;
-            }
-
-            container.style.display = 'flex';
-
-            fileStorage[storageKey].forEach((file, index) => {
-                const previewItem = document.createElement('div');
-                previewItem.className = 'preview-item';
-                previewItem.style.cssText = 'position: relative; width: 120px; margin: 5px;';
-
-                if (file.type.startsWith('image/')) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        previewItem.innerHTML = `
-                    <img src="${e.target.result}" style="width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 2px solid #dee2e6;">
-                    <button type="button" onclick="removeFile('${storageKey}', ${index}, '${containerId}')" 
-                            class="remove-preview">×</button>
-                    <div style="font-size: 11px; margin-top: 5px; text-align: center; word-break: break-word; color: #495057;">
-                        ${file.name}
-                    </div>
-                    <div style="font-size: 10px; text-align: center; color: #6c757d;">
-                        ${formatFileSize(file.size)}
-                    </div>
-                `;
-                    };
-                    reader.readAsDataURL(file);
-                } else if (file.type === 'application/pdf') {
-                    previewItem.innerHTML = `
-                <div class="pdf-preview">
-                    <i class="fas fa-file-pdf" style="font-size: 3rem; color: #dc3545; margin-bottom: 8px;"></i>
-                    <div style="font-size: 10px; text-align: center; padding: 0 5px; color: #495057;">PDF</div>
-                </div>
-                <button type="button" onclick="removeFile('${storageKey}', ${index}, '${containerId}')" 
-                        class="remove-preview">×</button>
-                <div style="font-size: 11px; margin-top: 5px; text-align: center; word-break: break-word; color: #495057;">
-                    ${file.name}
-                </div>
-                <div style="font-size: 10px; text-align: center; color: #6c757d;">
-                    ${formatFileSize(file.size)}
-                </div>
-            `;
-                }
-
-                container.appendChild(previewItem);
-            });
-        }
-
-        // Fungsi untuk hapus file
-        function removeFile(storageKey, index, containerId) {
-            fileStorage[storageKey].splice(index, 1);
-            updateFilePreview(storageKey, containerId);
-        }
-
-        // Setup Drag & Drop
-        function setupDragDropWithStorage(dropZone, fileInput, previewContainer, storageKey, maxFiles = 5, maxSizeMB = 1) {
-            if (!dropZone || !fileInput) return;
-
-            dropZone.addEventListener('click', () => fileInput.click());
-
-            dropZone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                dropZone.classList.add('drag-over');
-            });
-
-            dropZone.addEventListener('dragleave', () => {
-                dropZone.classList.remove('drag-over');
-            });
-
-            dropZone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropZone.classList.remove('drag-over');
-
-                const dt = new DataTransfer();
-                const droppedFiles = Array.from(e.dataTransfer.files);
-
-                if (fileStorage[storageKey].length + droppedFiles.length > maxFiles) {
-                    alert(`Maksimal ${maxFiles} file. Anda sudah memiliki ${fileStorage[storageKey].length} file.`);
-                    return;
-                }
-
-                for (let file of droppedFiles) {
-                    if (file.size > maxSizeMB * 1024 * 1024) {
-                        alert(`File ${file.name} melebihi ${maxSizeMB} MB.`);
-                        return;
-                    }
-                    dt.items.add(file);
-                }
-
-                fileInput.files = dt.files;
-                handleFileInput(fileInput, storageKey, previewContainer.id, maxFiles);
-            });
-
-            fileInput.addEventListener('change', () => {
-                const files = Array.from(fileInput.files);
-
-                if (fileStorage[storageKey].length + files.length > maxFiles) {
-                    alert(`Maksimal ${maxFiles} file. Anda sudah memiliki ${fileStorage[storageKey].length} file.`);
-                    fileInput.value = '';
-                    return;
-                }
-
-                for (let file of files) {
-                    if (file.size > maxSizeMB * 1024 * 1024) {
-                        alert(`File ${file.name} melebihi ${maxSizeMB} MB.`);
-                        fileInput.value = '';
-                        return;
-                    }
-                }
-
-                handleFileInput(fileInput, storageKey, previewContainer.id, maxFiles);
-            });
-        }
-
-        // ===== LEGALITAS UPLOAD SECTIONS =====
-        function updateLegalitasUploads() {
-            const legalitasCheckboxes = document.querySelectorAll('.legalitas-checkbox');
-            const legalitasContainer = document.getElementById('legalitasUploadContainer');
-            const legalitasLainInput = document.querySelector('input[name="legalitas_lain"]');
-
-            legalitasContainer.innerHTML = '';
-
-            // Upload untuk checkbox yang dipilih
-            legalitasCheckboxes.forEach((checkbox, index) => {
-                if (checkbox.checked) {
-                    const legalitasName = checkbox.value;
-                    const storageKey = `legalitas_files_${index}`;
-
-                    if (!fileStorage[storageKey]) {
-                        fileStorage[storageKey] = [];
-                    }
-
-                    const uploadSection = document.createElement('div');
-                    uploadSection.className = 'legalitas-upload-section';
-                    uploadSection.innerHTML = `
-                <h6><i class="fas fa-file-upload me-2"></i>Upload File ${legalitasName}</h6>
-                <div class="file-drop-zone legalitas-drop-zone" id="legalitas-drop-${index}">
-                    <i class="fas fa-cloud-upload-alt"></i>
-                    <p><strong>Seret & Lepas file di sini</strong><br>atau klik untuk memilih file</p>
-                    <small>Upload maksimal 3 file (PDF/JPG/PNG). Maks 1 MB per file</small>
-                    <input type="file" name="legalitas_files_${index}[]" id="legalitas-input-${index}" class="legalitas-file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden>
-                </div>
-                <div class="preview-container" id="legalitas-preview-${index}"></div>
-            `;
-                    legalitasContainer.appendChild(uploadSection);
-
-                    setTimeout(() => {
-                        setupDragDropWithStorage(
-                            document.getElementById(`legalitas-drop-${index}`),
-                            document.getElementById(`legalitas-input-${index}`),
-                            document.getElementById(`legalitas-preview-${index}`),
-                            storageKey, 3, 1
-                        );
-                    }, 100);
-                }
-            });
-
-            // Upload untuk "Legalitas Lainnya" jika ada input
-            if (legalitasLainInput && legalitasLainInput.value.trim() !== '') {
-                const storageKey = 'legalitas_files_lain';
-
-                if (!fileStorage[storageKey]) {
-                    fileStorage[storageKey] = [];
-                }
-
-                const uploadSection = document.createElement('div');
-                uploadSection.className = 'legalitas-upload-section';
-                uploadSection.innerHTML = `
-            <h6><i class="fas fa-file-upload me-2"></i>Upload File ${legalitasLainInput.value}</h6>
-            <div class="file-drop-zone legalitas-drop-zone" id="legalitas-drop-lain">
-                <i class="fas fa-cloud-upload-alt"></i>
-                <p><strong>Seret & Lepas file di sini</strong><br>atau klik untuk memilih file</p>
-                <small>Upload maksimal 3 file (PDF/JPG/PNG). Maks 1 MB per file</small>
-                <input type="file" name="legalitas_files_lain[]" id="legalitas-input-lain" class="legalitas-file-input" accept=".pdf,.jpg,.jpeg,.png" multiple hidden>
-            </div>
-            <div class="preview-container" id="legalitas-preview-lain"></div>
-        `;
-                legalitasContainer.appendChild(uploadSection);
-
-                setTimeout(() => {
-                    setupDragDropWithStorage(
-                        document.getElementById('legalitas-drop-lain'),
-                        document.getElementById('legalitas-input-lain'),
-                        document.getElementById('legalitas-preview-lain'),
-                        storageKey, 3, 1
-                    );
-                }, 100);
-            }
-        }
-
-        // Event listener untuk input "Legalitas Lainnya"
-        const legalitasLainInput = document.querySelector('input[name="legalitas_lain"]');
-        if (legalitasLainInput) {
-            legalitasLainInput.addEventListener('input', function() {
-                // Delay untuk memberikan waktu user mengetik
-                clearTimeout(window.legalitasLainTimeout);
-                window.legalitasLainTimeout = setTimeout(() => {
-                    updateLegalitasUploads();
-                }, 500);
-            });
-        }
-
-        // ===== FORM SUBMISSION HANDLER - FIXED VERSION =====
-        function handleFormSubmit(e) {
-            e.preventDefault();
-
-            console.log('Form submission started');
-
-            // 1. Validasi dan collect produk data
-            const rows = document.querySelectorAll('#produkTableBody tr');
-            const produkData = [];
-
-            rows.forEach(row => {
-                const nama = row.querySelector('.produk-nama').value.trim();
-                const jumlah = parseInt(row.querySelector('.produk-jumlah').value) || 0;
-                const harga = parseInt(row.querySelector('.produk-harga').value) || 0;
-
-                if (nama && jumlah > 0 && harga > 0) {
-                    produkData.push({
-                        nama,
-                        jumlah,
-                        harga,
-                        omset: jumlah * harga,
-                        kapasitas: jumlah + ' unit'
-                    });
-                }
-            });
-
-            if (produkData.length === 0) {
-                alert('Mohon isi minimal 1 data produk dengan lengkap!');
-                return false;
-            }
-
-            document.getElementById('produkData').value = JSON.stringify(produkData);
-
-            // 2. Validasi file wajib
-            const requiredFiles = {
-                'nib_files': 'File NIB',
-                'foto_produk': 'Foto Produk',
-                'foto_proses': 'Foto Proses Produksi',
-                'logo1': 'Logo Merek Alternatif 1',
-                'logo2': 'Logo Merek Alternatif 2',
-                'logo3': 'Logo Merek Alternatif 3'
-            };
-
-            for (let [key, label] of Object.entries(requiredFiles)) {
-                if (!fileStorage[key] || fileStorage[key].length === 0) {
-                    alert(`${label} wajib diupload!`);
-                    return false;
-                }
-            }
-
-            console.log('All validations passed');
-
-            // 3. Transfer files dari storage ke form inputs
-            Object.keys(fileStorage).forEach(key => {
-                if (fileStorage[key] && fileStorage[key].length > 0) {
-                    let inputSelector;
-
-                    // Untuk logo (single file)
-                    if (key.startsWith('logo')) {
-                        inputSelector = `input[name="${key}"]`;
-                    }
-                    // Untuk files array (multiple files)
-                    else if (key.startsWith('legalitas_files_')) {
-                        inputSelector = `input[name="${key}[]"]`;
-                    }
-                    // Untuk file arrays biasa
-                    else {
-                        inputSelector = `input[name="${key}[]"]`;
-                    }
-
-                    const input = document.querySelector(inputSelector);
-
-                    if (input) {
-                        const dataTransfer = new DataTransfer();
-                        fileStorage[key].forEach(file => {
-                            dataTransfer.items.add(file);
-                        });
-                        input.files = dataTransfer.files;
-                        console.log(`Transferred ${fileStorage[key].length} files to ${key}`);
-                    }
-                }
-            });
-
-            // 4. Konfirmasi submit
-            const confirmed = confirm(
-                'Apakah Anda yakin semua data yang diisi sudah benar dan lengkap?\n\n' +
-                'Setiap akun hanya dapat melakukan 1 kali pendaftaran merek.\n\n' +
-                'Data yang sudah dikirim tidak dapat diubah.'
-            );
-
-            if (!confirmed) {
-                console.log('User cancelled submission');
-                return false;
-            }
-
-            // 5. Disable button dan submit
-            const btnSubmit = document.getElementById('btnSubmit');
-            btnSubmit.disabled = true;
-            btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin pe-2"></i> Mengirim Data...';
-
-            // Set flag untuk prevent warning
-            window.formChanged = false;
-
-            console.log('Submitting form...');
-
-            // Submit form secara native
-            e.target.submit();
-        }
-
-        // ===== INITIALIZE ON PAGE LOAD =====
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('Page loaded, initializing...');
-
-            // Setup drag & drop untuk semua file inputs
-            setupDragDropWithStorage(
-                document.getElementById('nibDropZone'),
-                document.getElementById('nib-file'),
-                document.getElementById('nibPreview'),
-                'nib_files', 5, 10
-            );
-
-            setupDragDropWithStorage(
-                document.getElementById('produkDropZone'),
-                document.getElementById('product-file'),
-                document.getElementById('produkPreview'),
-                'foto_produk', 5, 1
-            );
-
-            setupDragDropWithStorage(
-                document.getElementById('prosesDropZone'),
-                document.getElementById('prosesproduksi-file'),
-                document.getElementById('prosesPreview'),
-                'foto_proses', 5, 1
-            );
-
-            setupDragDropWithStorage(
-                document.getElementById('logo1DropZone'),
-                document.getElementById('logo1-file'),
-                document.getElementById('logo1Preview'),
-                'logo1', 1, 1
-            );
-
-            setupDragDropWithStorage(
-                document.getElementById('logo2DropZone'),
-                document.getElementById('logo2-file'),
-                document.getElementById('logo2Preview'),
-                'logo2', 1, 1
-            );
-
-            setupDragDropWithStorage(
-                document.getElementById('logo3DropZone'),
-                document.getElementById('logo3-file'),
-                document.getElementById('logo3Preview'),
-                'logo3', 1, 1
-            );
-
-            // Setup legalitas checkboxes
-            const legalitasCheckboxes = document.querySelectorAll('.legalitas-checkbox');
-            legalitasCheckboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', updateLegalitasUploads);
-            });
-
-            // Setup form submit handler
-            const form = document.getElementById('formPendaftaran');
-            if (form) {
-                form.addEventListener('submit', handleFormSubmit);
-                console.log('Form submit handler attached');
-            }
-
-            // Warning when leaving page
-            window.formChanged = false;
-
-            document.querySelectorAll('#formPendaftaran input, #formPendaftaran textarea, #formPendaftaran select').forEach(element => {
-                element.addEventListener('change', function() {
-                    window.formChanged = true;
-                });
-            });
-
-            window.addEventListener('beforeunload', function(e) {
-                if (window.formChanged) {
-                    e.preventDefault();
-                    e.returnValue = '';
-                    return '';
-                }
-            });
-
-            console.log('Initialization complete');
-        });
-    </script>
+    <script src="assets/js/form-pendaftaran.js"></script>
 </body>
 
 </html>

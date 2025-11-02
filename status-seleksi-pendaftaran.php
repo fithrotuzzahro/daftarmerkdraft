@@ -6,8 +6,8 @@ date_default_timezone_set('Asia/Jakarta');
 
 // Cek login
 if (!isset($_SESSION['NIK_NIP'])) {
-    header("Location: login.php");
-    exit;
+  header("Location: login.php");
+  exit;
 }
 
 $NIK = $_SESSION['NIK_NIP'];
@@ -15,119 +15,118 @@ $nama = $_SESSION['nama_lengkap'];
 
 // ===== HANDLER AJAX REQUEST =====
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
-    header('Content-Type: application/json');
-    
-    $action = $_POST['ajax_action'];
-    $id_pendaftaran = isset($_POST['id_pendaftaran']) ? intval($_POST['id_pendaftaran']) : 0;
-    
-    if (!$id_pendaftaran) {
-        echo json_encode(['success' => false, 'message' => 'ID pendaftaran tidak valid']);
-        exit;
+  header('Content-Type: application/json');
+
+  $action = $_POST['ajax_action'];
+  $id_pendaftaran = isset($_POST['id_pendaftaran']) ? intval($_POST['id_pendaftaran']) : 0;
+
+  if (!$id_pendaftaran) {
+    echo json_encode(['success' => false, 'message' => 'ID pendaftaran tidak valid']);
+    exit;
+  }
+
+  try {
+    // Verifikasi bahwa pendaftaran ini milik user yang login
+    $stmt = $pdo->prepare("SELECT NIK FROM pendaftaran WHERE id_pendaftaran = ?");
+    $stmt->execute([$id_pendaftaran]);
+    $pendaftaran = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$pendaftaran || $pendaftaran['NIK'] !== $NIK) {
+      echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
+      exit;
     }
-    
-    try {
-        // Verifikasi bahwa pendaftaran ini milik user yang login
-        $stmt = $pdo->prepare("SELECT NIK FROM pendaftaran WHERE id_pendaftaran = ?");
-        $stmt->execute([$id_pendaftaran]);
-        $pendaftaran = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$pendaftaran || $pendaftaran['NIK'] !== $NIK) {
-            echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
-            exit;
-        }
-        
-        // HANDLE KONFIRMASI LANJUT (dari Merek 2 atau 3)
-        if ($action === 'konfirmasi_lanjut') {
-            // Update status ke Surat Keterangan Difasilitasi (bukan Melengkapi Surat)
-            $stmt = $pdo->prepare("UPDATE pendaftaran SET status_validasi = 'Surat Keterangan Difasilitasi' WHERE id_pendaftaran = ?");
-            $stmt->execute([$id_pendaftaran]);
-            
-            echo json_encode(['success' => true, 'message' => 'Status berhasil diperbarui']);
-            exit;
-        }
-        
-        // HANDLE UPLOAD SURAT TTD DARI PEMOHON
-        if ($action === 'upload_surat') {
-            if (!isset($_FILES['fileSurat']) || $_FILES['fileSurat']['error'] !== UPLOAD_ERR_OK) {
-                echo json_encode(['success' => false, 'message' => 'File tidak valid']);
-                exit;
-            }
-            
-            $file = $_FILES['fileSurat'];
-            $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
-            
-            if (!in_array($file_extension, $allowed_extensions)) {
-                echo json_encode(['success' => false, 'message' => 'Format file tidak diizinkan']);
-                exit;
-            }
-            
-            if ($file['size'] > 5 * 1024 * 1024) {
-                echo json_encode(['success' => false, 'message' => 'Ukuran file maksimal 5MB']);
-                exit;
-            }
-            
-            $folder = "uploads/berkas_fasilitasi/";
-            if (!file_exists($folder)) {
-                mkdir($folder, 0777, true);
-            }
-            
-            $filename = time() . "_" . uniqid() . "." . $file_extension;
-            $target = $folder . $filename;
-            
-            if (move_uploaded_file($file['tmp_name'], $target)) {
-                $tgl_upload = date('Y-m-d H:i:s');
-                
-                $pdo->beginTransaction();
-                
-                try {
-                    $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 4");
-                    $stmt->execute([$id_pendaftaran]);
-                    $old_file = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
-                    if ($old_file && file_exists($old_file['file_path'])) {
-                        unlink($old_file['file_path']);
-                    }
-                    
-                    $stmt = $pdo->prepare("DELETE FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 4");
-                    $stmt->execute([$id_pendaftaran]);
-                    
-                    // Simpan surat baru
-                    $stmt = $pdo->prepare("INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path) VALUES (?, 4, ?, ?)");
-                    $stmt->execute([$id_pendaftaran, $tgl_upload, $target]);
-                    
-                    // ===== PENTING: UBAH STATUS SAAT PEMOHON UPLOAD =====
-                    $stmt = $pdo->prepare("UPDATE pendaftaran SET status_validasi = 'Menunggu Bukti Pendaftaran' WHERE id_pendaftaran = ?");
-                    $stmt->execute([$id_pendaftaran]);
-                    
-                    $pdo->commit();
-                    
-                    echo json_encode(['success' => true, 'message' => 'Surat berhasil dikirim']);
-                    
-                } catch (PDOException $e) {
-                    $pdo->rollBack();
-                    if (file_exists($target)) {
-                        unlink($target);
-                    }
-                    throw $e;
-                }
-                
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Gagal mengupload file']);
-            }
-            exit;
-        }
-        
-    } catch (PDOException $e) {
-        error_log("Error AJAX: " . $e->getMessage());
-        echo json_encode(['success' => false, 'message' => 'Terjadi kesalahan database']);
-        exit;
+
+    // HANDLE KONFIRMASI LANJUT (dari Merek 2 atau 3)
+    if ($action === 'konfirmasi_lanjut') {
+      // Update status ke Surat Keterangan Difasilitasi (bukan Melengkapi Surat)
+      $stmt = $pdo->prepare("UPDATE pendaftaran SET status_validasi = 'Surat Keterangan Difasilitasi' WHERE id_pendaftaran = ?");
+      $stmt->execute([$id_pendaftaran]);
+
+      echo json_encode(['success' => true, 'message' => 'Status berhasil diperbarui']);
+      exit;
     }
+
+    // HANDLE UPLOAD SURAT TTD DARI PEMOHON
+    if ($action === 'upload_surat') {
+      if (!isset($_FILES['fileSurat']) || $_FILES['fileSurat']['error'] !== UPLOAD_ERR_OK) {
+        echo json_encode(['success' => false, 'message' => 'File tidak valid']);
+        exit;
+      }
+
+      $file = $_FILES['fileSurat'];
+      $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+      $allowed_extensions = ['pdf'];
+
+      if (!in_array($file_extension, $allowed_extensions)) {
+        echo json_encode(['success' => false, 'message' => 'Format file tidak diizinkan']);
+        exit;
+      }
+
+      if ($file['size'] > 5 * 1024 * 1024) {
+        echo json_encode(['success' => false, 'message' => 'Ukuran file maksimal 5MB']);
+        exit;
+      }
+
+      // Format: uploads/berkas_fasilitasi/berkasfasilitasi_NIK/
+      $folder = "uploads/berkas_fasilitasi/berkasfasilitasi_{$NIK}/";
+      if (!file_exists($folder)) {
+        mkdir($folder, 0777, true);
+      }
+
+      // Format nama file: berkasfasilitasi_NIK_timestamp.pdf
+      $filename = "berkasfasilitasi_{$NIK}_" . time() . "." . $file_extension;
+      $target = $folder . $filename;
+
+      if (move_uploaded_file($file['tmp_name'], $target)) {
+        $tgl_upload = date('Y-m-d H:i:s');
+
+        $pdo->beginTransaction();
+
+        try {
+          $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 4");
+          $stmt->execute([$id_pendaftaran]);
+          $old_file = $stmt->fetch(PDO::FETCH_ASSOC);
+
+          if ($old_file && file_exists($old_file['file_path'])) {
+            unlink($old_file['file_path']);
+          }
+
+          $stmt = $pdo->prepare("DELETE FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 4");
+          $stmt->execute([$id_pendaftaran]);
+
+          // Simpan surat baru
+          $stmt = $pdo->prepare("INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path) VALUES (?, 4, ?, ?)");
+          $stmt->execute([$id_pendaftaran, $tgl_upload, $target]);
+
+          // ===== PENTING: UBAH STATUS SAAT PEMOHON UPLOAD =====
+          $stmt = $pdo->prepare("UPDATE pendaftaran SET status_validasi = 'Menunggu Bukti Pendaftaran' WHERE id_pendaftaran = ?");
+          $stmt->execute([$id_pendaftaran]);
+
+          $pdo->commit();
+
+          echo json_encode(['success' => true, 'message' => 'Surat berhasil dikirim']);
+        } catch (PDOException $e) {
+          $pdo->rollBack();
+          if (file_exists($target)) {
+            unlink($target);
+          }
+          throw $e;
+        }
+      } else {
+        echo json_encode(['success' => false, 'message' => 'Gagal mengupload file']);
+      }
+      exit;
+    }
+  } catch (PDOException $e) {
+    error_log("Error AJAX: " . $e->getMessage());
+    echo json_encode(['success' => false, 'message' => 'Terjadi kesalahan database']);
+    exit;
+  }
 }
 
 // ===== AMBIL DATA PENDAFTARAN =====
 try {
-    $stmt = $pdo->prepare("
+  $stmt = $pdo->prepare("
         SELECT p.*, 
                p.merek_difasilitasi,
                p.alasan_tidak_difasilitasi,
@@ -142,83 +141,82 @@ try {
         ORDER BY p.tgl_daftar DESC
         LIMIT 1
     ");
-    $stmt->execute(['nik' => $NIK]);
-    $pendaftaran = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$pendaftaran) {
-        header("Location: form-pendaftaran.php");
-        exit;
-    }
-    
-    // Ambil alasan dari database
-    $alasan_notifikasi = '';
-    $alasan_konfirmasi = '';
-    
-    if ($pendaftaran['status_validasi'] === 'Tidak Bisa Difasilitasi') {
-        $alasan_notifikasi = $pendaftaran['alasan_tidak_difasilitasi'] ?: "Mohon maaf merek yang anda ajukan tidak bisa difasilitasi.";
-    }
+  $stmt->execute(['nik' => $NIK]);
+  $pendaftaran = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($pendaftaran['status_validasi'] === 'Konfirmasi Lanjut') {
-        $alasan_konfirmasi = $pendaftaran['alasan_konfirmasi'] ?: '';
-    }
-    
+  if (!$pendaftaran) {
+    header("Location: form-pendaftaran.php");
+    exit;
+  }
+
+  // Ambil alasan dari database
+  $alasan_notifikasi = '';
+  $alasan_konfirmasi = '';
+
+  if ($pendaftaran['status_validasi'] === 'Tidak Bisa Difasilitasi') {
+    $alasan_notifikasi = $pendaftaran['alasan_tidak_difasilitasi'] ?: "Mohon maaf merek yang anda ajukan tidak bisa difasilitasi.";
+  }
+
+  if ($pendaftaran['status_validasi'] === 'Konfirmasi Lanjut') {
+    $alasan_konfirmasi = $pendaftaran['alasan_konfirmasi'] ?: '';
+  }
 } catch (PDOException $e) {
-    error_log("Error: " . $e->getMessage());
-    die("Terjadi kesalahan saat mengambil data");
+  error_log("Error: " . $e->getMessage());
+  die("Terjadi kesalahan saat mengambil data");
 }
 
 // Mapping status untuk kode unik
 $statusMap = [
-    'Pengecekan Berkas' => 'pengecekanberkas',
-    'Tidak Bisa Difasilitasi' => 'tidakbisadifasilitasi',
-    'Konfirmasi Lanjut' => 'konfirmasilanjut',
-    'Surat Keterangan Difasilitasi' => 'melengkapisurat',
-    'Menunggu Bukti Pendaftaran' => 'menunggubukti',
-    'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' => 'buktiterbit',
-    'Hasil Verifikasi Kementerian' => 'sertifikatterbit'
+  'Pengecekan Berkas' => 'pengecekanberkas',
+  'Tidak Bisa Difasilitasi' => 'tidakbisadifasilitasi',
+  'Konfirmasi Lanjut' => 'konfirmasilanjut',
+  'Surat Keterangan Difasilitasi' => 'melengkapisurat',
+  'Menunggu Bukti Pendaftaran' => 'menunggubukti',
+  'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' => 'buktiterbit',
+  'Hasil Verifikasi Kementerian' => 'sertifikatterbit'
 ];
 
 $statusKey = $statusMap[$pendaftaran['status_validasi']] ?? 'pengecekanberkas';
 
 $dataStatus = [
-    'pengecekanberkas' => [
-        'proses' => 'Proses Pengecekan Berkas',
-        'status' => 'Merek dalam Proses Pengecekan Berkas',
-        'desc'   => 'Anda baru saja mengajukan permohonan merek, sekarang merek dalam proses pengecekan berkas.',
-    ],
-    'tidakbisadifasilitasi' => [
-        'proses' => 'Tidak Bisa Difasilitasi',
-        'status' => 'Merek Tidak Bisa Difasilitasi',
-        'desc'   => $alasan_notifikasi,
-    ],
-    'konfirmasilanjut' => [
-        'proses' => 'Konfirmasi Lanjut',
-        'status' => 'Konfirmasi untuk Melanjutkan dengan Merek Alternatif',
-        'desc'   => 'Merek yang bisa difasilitasi adalah Merek Alternatif ' . ($pendaftaran['merek_difasilitasi'] ?? '2') . '.',
-        'alasan' => $alasan_konfirmasi,
-    ],
-    'melengkapisurat' => [
-        'proses' => 'Melengkapi Surat Keterangan Difasilitasi',
-        'status' => 'Melengkapi Surat Keterangan Difasilitasi',
-        'desc'   => 'Silakan download Surat Keterangan Difasilitasi di bawah ini, tandatangani, lalu upload kembali untuk melanjutkan proses.',
-    ],
-    'menunggubukti' => [
-        'proses' => 'Menunggu Bukti Pendaftaran',
-        'status' => 'Menunggu Bukti Pendaftaran dari Admin',
-        'desc'   => 'Surat yang sudah ditandatangani telah berhasil dikirim. Menunggu admin mengirimkan Surat Keterangan IKM dan Bukti Pendaftaran.',
-    ],
-    'buktiterbit' => [
-        'proses' => 'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian',
-        'status' => 'Bukti Pendaftaran Sudah Terbit dan Diajukan Ke Kementerian',
-        'desc'   => 'Bukti Pendaftaran merek Anda telah tersedia dan sudah diajukan ke Kementerian. Silakan download dokumen di bawah ini.',
-        'countdown' => 'Estimasi Proses Verifikasi Kementerian: 1 tahun 6 bulan',
-    ],
-    'sertifikatterbit' => [
-        'proses' => 'Hasil Verifikasi Kementerian',
-        'status' => 'Hasil Verifikasi Kementerian',
-        'desc'   => 'Selamat, merek anda sudah terdaftar dan sudah terbit sertifikatnya.',
-        'masa_berlaku' => 'Masa Berlaku Sertifikat: 10 tahun',
-    ],
+  'pengecekanberkas' => [
+    'proses' => 'Proses Pengecekan Berkas',
+    'status' => 'Merek dalam Proses Pengecekan Berkas',
+    'desc'   => 'Anda baru saja mengajukan permohonan merek, sekarang merek dalam proses pengecekan berkas.',
+  ],
+  'tidakbisadifasilitasi' => [
+    'proses' => 'Tidak Bisa Difasilitasi',
+    'status' => 'Merek Tidak Bisa Difasilitasi',
+    'desc'   => $alasan_notifikasi,
+  ],
+  'konfirmasilanjut' => [
+    'proses' => 'Konfirmasi Lanjut',
+    'status' => 'Konfirmasi untuk Melanjutkan dengan Merek Alternatif',
+    'desc'   => 'Merek yang bisa difasilitasi adalah Merek Alternatif ' . ($pendaftaran['merek_difasilitasi'] ?? '2') . '.',
+    'alasan' => $alasan_konfirmasi,
+  ],
+  'melengkapisurat' => [
+    'proses' => 'Melengkapi Surat Keterangan Difasilitasi',
+    'status' => 'Melengkapi Surat Keterangan Difasilitasi',
+    'desc'   => 'Silakan download Surat Keterangan Difasilitasi di bawah ini, tandatangani, lalu upload kembali untuk melanjutkan proses.',
+  ],
+  'menunggubukti' => [
+    'proses' => 'Menunggu Bukti Pendaftaran',
+    'status' => 'Menunggu Bukti Pendaftaran dari Admin',
+    'desc'   => 'Surat yang sudah ditandatangani telah berhasil dikirim. Menunggu admin mengirimkan Surat Keterangan IKM dan Bukti Pendaftaran.',
+  ],
+  'buktiterbit' => [
+    'proses' => 'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian',
+    'status' => 'Bukti Pendaftaran Sudah Terbit dan Diajukan Ke Kementerian',
+    'desc'   => 'Bukti Pendaftaran merek Anda telah tersedia dan sudah diajukan ke Kementerian. Silakan download dokumen di bawah ini.',
+    'countdown' => 'Estimasi Proses Verifikasi Kementerian: 1 tahun 6 bulan',
+  ],
+  'sertifikatterbit' => [
+    'proses' => 'Hasil Verifikasi Kementerian',
+    'status' => 'Hasil Verifikasi Kementerian',
+    'desc'   => 'Selamat, merek anda sudah terdaftar dan sudah terbit sertifikatnya.',
+    'masa_berlaku' => 'Masa Berlaku Sertifikat: 10 tahun',
+  ],
 ];
 
 $data = $dataStatus[$statusKey];
@@ -230,46 +228,46 @@ $sertifikatMerek = null;
 $suratPenolakan = null;
 
 try {
-    // Ambil Surat Keterangan IKM
-    $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 5 ORDER BY tgl_upload DESC LIMIT 1");
-    $stmt->execute([$pendaftaran['id_pendaftaran']]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
-    $suratKeteranganIKM = $result ? $result['file_path'] : null;
-    
-    // Ambil Bukti Pendaftaran
-    $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 6 ORDER BY tgl_upload DESC LIMIT 1");
-    $stmt->execute([$pendaftaran['id_pendaftaran']]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
-    $buktiPendaftaran = $result ? $result['file_path'] : null;
-    
-    // Ambil Sertifikat Terbit
-    $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 7 ORDER BY tgl_upload DESC LIMIT 1");
-    $stmt->execute([$pendaftaran['id_pendaftaran']]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
-    $sertifikatMerek = $result ? $result['file_path'] : null;
-    
-    // Ambil Surat Penolakan - TAMBAHKAN QUERY INI
-    $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 8 ORDER BY tgl_upload DESC LIMIT 1");
-    $stmt->execute([$pendaftaran['id_pendaftaran']]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
-    $suratPenolakan = $result ? $result['file_path'] : null;
-    
+  // Ambil Surat Keterangan IKM
+  $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 5 ORDER BY tgl_upload DESC LIMIT 1");
+  $stmt->execute([$pendaftaran['id_pendaftaran']]);
+  $result = $stmt->fetch(PDO::FETCH_ASSOC);
+  $suratKeteranganIKM = $result ? $result['file_path'] : null;
+
+  // Ambil Bukti Pendaftaran
+  $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 6 ORDER BY tgl_upload DESC LIMIT 1");
+  $stmt->execute([$pendaftaran['id_pendaftaran']]);
+  $result = $stmt->fetch(PDO::FETCH_ASSOC);
+  $buktiPendaftaran = $result ? $result['file_path'] : null;
+
+  // Ambil Sertifikat Terbit
+  $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 7 ORDER BY tgl_upload DESC LIMIT 1");
+  $stmt->execute([$pendaftaran['id_pendaftaran']]);
+  $result = $stmt->fetch(PDO::FETCH_ASSOC);
+  $sertifikatMerek = $result ? $result['file_path'] : null;
+
+  // Ambil Surat Penolakan
+  $stmt = $pdo->prepare("SELECT file_path FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 8 ORDER BY tgl_upload DESC LIMIT 1");
+  $stmt->execute([$pendaftaran['id_pendaftaran']]);
+  $result = $stmt->fetch(PDO::FETCH_ASSOC);
+  $suratPenolakan = $result ? $result['file_path'] : null;
 } catch (PDOException $e) {
-    error_log("Error fetching lampiran: " . $e->getMessage());
+  error_log("Error fetching lampiran: " . $e->getMessage());
 }
 
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Status Seleksi Pendaftaran Merek</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
-  <link rel="stylesheet" href="assets/css/status-seleksi.css"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/status-seleksi.css" />
   <style>
     .step-card {
       background: #fff;
@@ -277,6 +275,7 @@ try {
       border-radius: 8px;
       margin-bottom: 1.5rem;
     }
+
     .step-header {
       background: #0d6efd;
       color: white;
@@ -286,6 +285,7 @@ try {
       align-items: center;
       gap: 1rem;
     }
+
     .step-number {
       background: white;
       color: #0d6efd;
@@ -298,9 +298,11 @@ try {
       font-weight: bold;
       font-size: 1.2rem;
     }
+
     .step-body {
       padding: 1.5rem;
     }
+
     .warning-box {
       background: #fff3cd;
       border: 1px solid #ffc107;
@@ -310,82 +312,85 @@ try {
       align-items: start;
       gap: 0.75rem;
     }
+
     .warning-icon {
       color: #ffc107;
       font-size: 1.5rem;
       flex-shrink: 0;
     }
 
-      .card {
-    transition: all 0.3s ease;
-  }
-  
-  
-  .card.border-primary {
-    border-width: 2px !important;
-  }
-  
-  .card.border-success {
-    border-width: 2px !important;
-  }
-  
-  /* Button Download Styling */
-  .btn-dark, .btn-success {
-    transition: all 0.3s ease;
-    font-weight: 600;
-  }
-  
-  .btn-dark:hover {
-    background-color: #000;
-  }
-  
-  .btn-success:hover {
-    background-color: #157347;
-  }
-  
-  /* Alert Styling */
-  .alert {
-    border-radius: 8px;
-  }
-  
-  .alert-success {
-    background-color: #d1e7dd;
-    border-color: #badbcc;
-    color: #0f5132;
-  }
-  
-  .alert-warning {
-    background-color: #fff3cd;
-    border-color: #ffecb5;
-    color: #664d03;
-  }
-  
-  .alert-info {
-    background-color: #cff4fc;
-    border-color: #b6effb;
-    color: #055160;
-  }
-  
-  /* Responsive Design */
-  @media (max-width: 768px) {
     .card {
-      margin-bottom: 1rem;
+      transition: all 0.3s ease;
     }
-    
-    .btn-dark, .btn-success {
-      font-size: 0.9rem;
-      padding: 0.5rem 1rem;
+
+
+    .card.border-primary {
+      border-width: 2px !important;
     }
-  }
+
+    .card.border-success {
+      border-width: 2px !important;
+    }
+
+    /* Button Download Styling */
+    .btn-dark,
+    .btn-success {
+      transition: all 0.3s ease;
+      font-weight: 600;
+    }
+
+    .btn-dark:hover {
+      background-color: #000;
+    }
+
+    .btn-success:hover {
+      background-color: #157347;
+    }
+
+    /* Alert Styling */
+    .alert {
+      border-radius: 8px;
+    }
+
+    .alert-success {
+      background-color: #d1e7dd;
+      border-color: #badbcc;
+      color: #0f5132;
+    }
+
+    .alert-warning {
+      background-color: #fff3cd;
+      border-color: #ffecb5;
+      color: #664d03;
+    }
+
+    .alert-info {
+      background-color: #cff4fc;
+      border-color: #b6effb;
+      color: #055160;
+    }
+
+    @media (max-width: 768px) {
+      .card {
+        margin-bottom: 1rem;
+      }
+
+      .btn-dark,
+      .btn-success {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+      }
+    }
   </style>
 </head>
+
 <body>
   <?php include 'navbar-login.php' ?>
   <main class="main-content">
     <div class="container">
       <h1 class="page-title">Status Seleksi Pendaftaran Merek</h1>
       <p class="page-description">
-        Cek secara berkala untuk mengetahui perkembangan lebih<br/>
+        Cek secara berkala untuk mengetahui perkembangan lebih<br />
         lanjut status pendaftaran merek anda.
       </p>
 
@@ -397,7 +402,7 @@ try {
           </p>
         </div>
 
-        <hr class="border-2 border-secondary w-100 line"/>
+        <hr class="border-2 border-secondary w-100 line" />
 
         <div class="status-box">
           <div class="d-flex align-items-start">
@@ -410,17 +415,17 @@ try {
                     <strong><i class="fa-solid fa-exclamation-circle me-2"></i>Alasan:</strong>
                     <p class="m-0 mt-2"><?php echo nl2br(htmlspecialchars($data['desc'])); ?></p>
                   </div>
-                  
+
                 <?php elseif ($statusKey === 'konfirmasilanjut'): ?>
                   <p class="m-0"><?php echo htmlspecialchars($data['desc']); ?></p>
-                  
+
                   <?php if (!empty($data['alasan'])): ?>
-                  <div class="alert alert-info mt-3">
-                    <strong><i class="fa-solid fa-info-circle me-2"></i>Alasan Pemilihan:</strong>
-                    <p class="m-0 mt-2"><?php echo nl2br(htmlspecialchars($data['alasan'])); ?></p>
-                  </div>
+                    <div class="alert alert-info mt-3">
+                      <strong><i class="fa-solid fa-info-circle me-2"></i>Alasan Pemilihan:</strong>
+                      <p class="m-0 mt-2"><?php echo nl2br(htmlspecialchars($data['alasan'])); ?></p>
+                    </div>
                   <?php endif; ?>
-                  
+
                   <div class="mt-3">
                     <p class="mb-2"><strong>Mohon konfirmasi:</strong></p>
                     <p class="mb-3">Jika berkenan untuk lanjut maka tekan <strong>Lanjut</strong>, dan jika tidak berkenan tekan <strong>Mundur</strong> untuk mengubah data pendaftaran.</p>
@@ -429,10 +434,10 @@ try {
                       <a id="btnMundur" href="form-pendaftaran.php?edit=<?php echo $pendaftaran['id_pendaftaran']; ?>" class="btn btn-outline-dark">Mundur</a>
                     </div>
                   </div>
-                  
+
                 <?php elseif ($statusKey === 'melengkapisurat'): ?>
                   <p class="m-0 mb-4"><?php echo htmlspecialchars($data['desc']); ?></p>
-                  
+
                   <!-- TAMPILAN BARU SEPERTI GAMBAR KEDUA -->
                   <div class="step-card">
                     <div class="step-header">
@@ -448,12 +453,12 @@ try {
                         <div class="step-number">1</div>
                         <div class="flex-grow-1">
                           <h6 class="fw-bold mb-3">Download Surat Kelengkapan</h6>
-                          
+
                           <!-- Download surat otomatis dari template -->
                           <a class="btn btn-dark" href="generate-surat-otomatis.php?id=<?php echo $pendaftaran['id_pendaftaran']; ?>" target="_blank">
                             <i class="fa-solid fa-download me-2"></i> Download Surat Kelengkapan Difasilitasi (Word)
                           </a>
-                          
+
                           <div class="alert alert-info mt-3 mb-0">
                             <i class="fa-solid fa-info-circle me-2"></i>
                             <strong>Informasi:</strong>
@@ -482,7 +487,7 @@ try {
                     </div>
                   </div>
 
-                  <!-- Step 3: Upload Surat -->
+                  <!-- Step 3: Upload Surat - DENGAN PREVIEW ICON -->
                   <div class="step-card">
                     <div class="step-body">
                       <div class="d-flex align-items-start gap-3">
@@ -491,8 +496,31 @@ try {
                           <h6 class="fw-bold mb-3">Upload Surat yang Sudah Ditandatangani</h6>
                           <form id="formSurat">
                             <div class="mb-3">
-                              <label for="fileSurat" class="form-label">Pilih file (PDF, JPG, JPEG, PNG - Max 5MB)</label>
-                              <input class="form-control" type="file" id="fileSurat" name="fileSurat" accept=".pdf,.jpg,.jpeg,.png" required/>
+                              <label for="fileSurat" class="form-label">Pilih file dengan format PDF (Max 5MB)</label>
+                              <input class="form-control" type="file" id="fileSurat" name="fileSurat" accept=".pdf" required />
+
+                              <!-- Preview Area dalam bentuk Icon -->
+                              <div id="filePreview" class="mt-3" style="display: none;">
+                                <h6 class="fw-bold mb-2">File Terpilih:</h6>
+                                <div class="card border-primary">
+                                  <div class="card-body p-3">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                      <div class="d-flex align-items-center">
+                                        <div id="fileIcon" class="me-3" style="font-size: 2.5rem;">
+                                          <!-- Icon akan ditampilkan di sini -->
+                                        </div>
+                                        <div>
+                                          <h6 id="fileName" class="mb-1 fw-bold"></h6>
+                                          <p id="fileSize" class="text-muted mb-0 small"></p>
+                                        </div>
+                                      </div>
+                                      <button type="button" id="btnViewFile" class="btn btn-outline-primary btn-sm">
+                                        <i class="fa-solid fa-eye me-1"></i> Lihat
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                             <button id="btnKirimSurat" type="submit" class="btn btn-success">
                               <i class="fa-solid fa-paper-plane me-2"></i> Kirim Surat
@@ -502,298 +530,753 @@ try {
                       </div>
                     </div>
                   </div>
-                  
+
                 <?php elseif ($statusKey === 'menunggubukti'): ?>
-  <p class="m-0 mb-3"><?php echo htmlspecialchars($data['desc']); ?></p>
-  
-  <div class="row g-3">
-    <!-- Card Surat Keterangan IKM -->
-    <div class="col-md-6">
-      <div class="card border-primary">
-        <div class="card-body">
-          <h6 class="fw-bold mb-3">
-            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
-            Surat Keterangan IKM
-          </h6>
-          <?php if ($suratKeteranganIKM && file_exists($suratKeteranganIKM)): ?>
-            <div class="alert alert-success mb-3">
-              <i class="fa-solid fa-check-circle me-2"></i>
-              <strong>File Tersedia</strong>
-            </div>
-            <a class="btn btn-dark w-100" href="<?php echo htmlspecialchars($suratKeteranganIKM); ?>" target="_blank" download>
-              <i class="fa-solid fa-download me-2"></i> Download Surat Keterangan IKM
-            </a>
-          <?php else: ?>
-            <div class="alert alert-warning mb-0">
-              <i class="fa-solid fa-clock me-2"></i>
-              <strong>Belum Tersedia</strong>
-              <p class="mb-0 mt-2 small">Menunggu admin mengupload Surat Keterangan IKM</p>
-            </div>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Card Bukti Pendaftaran -->
-    <div class="col-md-6">
-      <div class="card border-success">
-        <div class="card-body">
-          <h6 class="fw-bold mb-3">
-            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
-            Bukti Pendaftaran
-          </h6>
-          <?php if ($buktiPendaftaran && file_exists($buktiPendaftaran)): ?>
-            <div class="alert alert-success mb-3">
-              <i class="fa-solid fa-check-circle me-2"></i>
-              <strong>File Tersedia</strong>
-            </div>
-            <a class="btn btn-success w-100" href="<?php echo htmlspecialchars($buktiPendaftaran); ?>" target="_blank" download>
-              <i class="fa-solid fa-download me-2"></i> Download Bukti Pendaftaran
-            </a>
-          <?php else: ?>
-            <div class="alert alert-warning mb-0">
-              <i class="fa-solid fa-clock me-2"></i>
-              <strong>Belum Tersedia</strong>
-              <p class="mb-0 mt-2 small">Menunggu admin mengupload Bukti Pendaftaran</p>
-            </div>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  <div class="alert alert-info mt-3" role="alert">
-    <i class="fa-solid fa-info-circle me-2"></i>
-    <strong>Informasi:</strong> Setelah admin mengupload kedua dokumen, status akan otomatis berubah menjadi "Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian"
-  </div>
-                  
+                  <p class="m-0 mb-3"><?php echo htmlspecialchars($data['desc']); ?></p>
+
+                  <div class="row g-3">
+                    <!-- Card Surat Keterangan IKM -->
+                    <div class="col-md-6">
+                      <div class="card border-primary">
+                        <div class="card-body">
+                          <h6 class="fw-bold mb-3">
+                            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
+                            Surat Keterangan IKM
+                          </h6>
+                          <?php if ($suratKeteranganIKM && file_exists($suratKeteranganIKM)): ?>
+                            <div class="alert alert-success mb-3">
+                              <i class="fa-solid fa-check-circle me-2"></i>
+                              <strong>File Tersedia</strong>
+                            </div>
+                            <a class="btn btn-dark w-100" href="<?php echo htmlspecialchars($suratKeteranganIKM); ?>" target="_blank" download>
+                              <i class="fa-solid fa-download me-2"></i> Download Surat Keterangan IKM
+                            </a>
+                          <?php else: ?>
+                            <div class="alert alert-warning mb-0">
+                              <i class="fa-solid fa-clock me-2"></i>
+                              <strong>Belum Tersedia</strong>
+                              <p class="mb-0 mt-2 small">Menunggu admin mengupload Surat Keterangan IKM</p>
+                            </div>
+                          <?php endif; ?>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Card Bukti Pendaftaran -->
+                    <div class="col-md-6">
+                      <div class="card border-success">
+                        <div class="card-body">
+                          <h6 class="fw-bold mb-3">
+                            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
+                            Bukti Pendaftaran
+                          </h6>
+                          <?php if ($buktiPendaftaran && file_exists($buktiPendaftaran)): ?>
+                            <div class="alert alert-success mb-3">
+                              <i class="fa-solid fa-check-circle me-2"></i>
+                              <strong>File Tersedia</strong>
+                            </div>
+                            <a class="btn btn-success w-100" href="<?php echo htmlspecialchars($buktiPendaftaran); ?>" target="_blank" download>
+                              <i class="fa-solid fa-download me-2"></i> Download Bukti Pendaftaran
+                            </a>
+                          <?php else: ?>
+                            <div class="alert alert-warning mb-0">
+                              <i class="fa-solid fa-clock me-2"></i>
+                              <strong>Belum Tersedia</strong>
+                              <p class="mb-0 mt-2 small">Menunggu admin mengupload Bukti Pendaftaran</p>
+                            </div>
+                          <?php endif; ?>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="alert alert-info mt-3" role="alert">
+                    <i class="fa-solid fa-info-circle me-2"></i>
+                    <strong>Informasi:</strong> Setelah admin mengupload kedua dokumen, status akan otomatis berubah menjadi "Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian"
+                  </div>
+
                 <?php elseif ($statusKey === 'buktiterbit'): ?>
-  <p class="m-0 mb-4"><?php echo htmlspecialchars($data['desc']); ?></p>
-  
-  <div class="row g-3">
-    <!-- Card Surat Keterangan IKM -->
-    <div class="col-md-6">
-      <div class="card border-primary h-100">
-        <div class="card-body d-flex flex-column">
-          <h6 class="fw-bold mb-3">
-            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
-            Surat Keterangan IKM
-          </h6>
-          <?php if ($suratKeteranganIKM && file_exists($suratKeteranganIKM)): ?>
-            <div class="alert alert-success flex-grow-1 mb-3">
-              <i class="fa-solid fa-check-circle me-2"></i>
-              <strong>File Tersedia untuk Diunduh</strong>
-              <p class="mb-0 mt-2 small">Surat Keterangan IKM telah diupload oleh admin</p>
-            </div>
-            <a class="btn btn-dark w-100" href="<?php echo htmlspecialchars($suratKeteranganIKM); ?>" target="_blank" download>
-              <i class="fa-solid fa-download me-2"></i> Download Surat Keterangan IKM
-            </a>
-          <?php else: ?>
-            <div class="alert alert-warning flex-grow-1 mb-3">
-              <i class="fa-solid fa-exclamation-triangle me-2"></i>
-              <strong>Tidak Tersedia</strong>
-              <p class="mb-0 mt-2 small">Silakan hubungi admin jika dokumen ini diperlukan</p>
-            </div>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Card Bukti Pendaftaran -->
-    <div class="col-md-6">
-      <div class="card border-success h-100">
-        <div class="card-body d-flex flex-column">
-          <h6 class="fw-bold mb-3">
-            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
-            Bukti Pendaftaran
-          </h6>
-          <?php if ($buktiPendaftaran && file_exists($buktiPendaftaran)): ?>
-            <div class="alert alert-success flex-grow-1 mb-3">
-              <i class="fa-solid fa-check-circle me-2"></i>
-              <strong>File Tersedia untuk Diunduh</strong>
-              <p class="mb-0 mt-2 small">Bukti Pendaftaran telah diupload oleh admin</p>
-            </div>
-            <a class="btn btn-success w-100" href="<?php echo htmlspecialchars($buktiPendaftaran); ?>" target="_blank" download>
-              <i class="fa-solid fa-download me-2"></i> Download Bukti Pendaftaran
-            </a>
-          <?php else: ?>
-            <div class="alert alert-warning flex-grow-1 mb-3">
-              <i class="fa-solid fa-exclamation-triangle me-2"></i>
-              <strong>Tidak Tersedia</strong>
-              <p class="mb-0 mt-2 small">Silakan hubungi admin untuk informasi lebih lanjut</p>
-            </div>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  <div class="alert alert-info mt-3" role="alert">
-    <i class="fa-solid fa-clock me-2"></i>
-    <strong><?php echo htmlspecialchars($data['countdown']); ?></strong>
-  </div>
-  
-  <div class="alert alert-success mt-3" role="alert">
-    <i class="fa-solid fa-check-circle me-2"></i>
-    Merek Anda telah diajukan ke Kementerian. Proses verifikasi sedang berlangsung. Anda akan mendapatkan notifikasi setelah sertifikat terbit.
-  </div>
-                  
+                  <p class="m-0 mb-4"><?php echo htmlspecialchars($data['desc']); ?></p>
+
+                  <div class="row g-3">
+                    <!-- Card Surat Keterangan IKM -->
+                    <div class="col-md-6">
+                      <div class="card border-primary h-100">
+                        <div class="card-body d-flex flex-column">
+                          <h6 class="fw-bold mb-3">
+                            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
+                            Surat Keterangan IKM
+                          </h6>
+                          <?php if ($suratKeteranganIKM && file_exists($suratKeteranganIKM)): ?>
+                            <div class="alert alert-success flex-grow-1 mb-3">
+                              <i class="fa-solid fa-check-circle me-2"></i>
+                              <strong>File Tersedia untuk Diunduh</strong>
+                              <p class="mb-0 mt-2 small">Surat Keterangan IKM telah diupload oleh admin</p>
+                            </div>
+                            <a class="btn btn-dark w-100" href="<?php echo htmlspecialchars($suratKeteranganIKM); ?>" target="_blank" download>
+                              <i class="fa-solid fa-download me-2"></i> Download Surat Keterangan IKM
+                            </a>
+                          <?php else: ?>
+                            <div class="alert alert-warning flex-grow-1 mb-3">
+                              <i class="fa-solid fa-exclamation-triangle me-2"></i>
+                              <strong>Tidak Tersedia</strong>
+                              <p class="mb-0 mt-2 small">Silakan hubungi admin jika dokumen ini diperlukan</p>
+                            </div>
+                          <?php endif; ?>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Card Bukti Pendaftaran -->
+                    <div class="col-md-6">
+                      <div class="card border-success h-100">
+                        <div class="card-body d-flex flex-column">
+                          <h6 class="fw-bold mb-3">
+                            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
+                            Bukti Pendaftaran
+                          </h6>
+                          <?php if ($buktiPendaftaran && file_exists($buktiPendaftaran)): ?>
+                            <div class="alert alert-success flex-grow-1 mb-3">
+                              <i class="fa-solid fa-check-circle me-2"></i>
+                              <strong>File Tersedia untuk Diunduh</strong>
+                              <p class="mb-0 mt-2 small">Bukti Pendaftaran telah diupload oleh admin</p>
+                            </div>
+                            <a class="btn btn-success w-100" href="<?php echo htmlspecialchars($buktiPendaftaran); ?>" target="_blank" download>
+                              <i class="fa-solid fa-download me-2"></i> Download Bukti Pendaftaran
+                            </a>
+                          <?php else: ?>
+                            <div class="alert alert-warning flex-grow-1 mb-3">
+                              <i class="fa-solid fa-exclamation-triangle me-2"></i>
+                              <strong>Tidak Tersedia</strong>
+                              <p class="mb-0 mt-2 small">Silakan hubungi admin untuk informasi lebih lanjut</p>
+                            </div>
+                          <?php endif; ?>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <?php
+                  // Ambil tanggal upload Bukti Pendaftaran
+                  $stmt = $pdo->prepare("SELECT tgl_upload FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 6 ORDER BY tgl_upload DESC LIMIT 1");
+                  $stmt->execute([$pendaftaran['id_pendaftaran']]);
+                  $bukti_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                  if ($bukti_data && $bukti_data['tgl_upload']) {
+                    $tgl_upload_bukti = new DateTime($bukti_data['tgl_upload']);
+                    $tgl_estimasi_selesai = clone $tgl_upload_bukti;
+                    $tgl_estimasi_selesai->add(new DateInterval('P1Y6M')); // Tambah 1 tahun 6 bulan
+
+                    $tgl_estimasi_formatted = $tgl_estimasi_selesai->format('Y-m-d H:i:s');
+
+                    // Format tanggal dalam Bahasa Indonesia
+                    $bulan_indonesia = [
+                      1 => 'Januari',
+                      2 => 'Februari',
+                      3 => 'Maret',
+                      4 => 'April',
+                      5 => 'Mei',
+                      6 => 'Juni',
+                      7 => 'Juli',
+                      8 => 'Agustus',
+                      9 => 'September',
+                      10 => 'Oktober',
+                      11 => 'November',
+                      12 => 'Desember'
+                    ];
+
+                    $tanggal = $tgl_estimasi_selesai->format('d');
+                    $bulan = $bulan_indonesia[(int)$tgl_estimasi_selesai->format('m')];
+                    $tahun = $tgl_estimasi_selesai->format('Y');
+                    $jam = $tgl_estimasi_selesai->format('H:i');
+
+                    $tgl_estimasi_indo = "$tanggal $bulan $tahun, $jam";
+                  ?>
+                    <div class="alert alert-info mt-3" role="alert" id="countdown-alert">
+                      <i class="fa-solid fa-clock me-2"></i>
+                      <strong>Estimasi Proses Verifikasi Kementerian:</strong>
+                      <div class="mt-2" style="font-size: 1.1rem; font-weight: 600;">
+                        <span id="countdown-timer">Menghitung...</span>
+                      </div>
+                      <small class="d-block mt-2 text-muted">
+                        Diperkirakan selesai pada: <?php echo $tgl_estimasi_indo; ?> WIB
+                      </small>
+                    </div>
+
+                    <script>
+                      // Set target date untuk countdown (1 tahun 6 bulan dari upload bukti pendaftaran)
+                      const targetDate = new Date('<?php echo $tgl_estimasi_formatted; ?>').getTime();
+                      const startDate = new Date('<?php echo $tgl_upload_bukti->format('Y-m-d H:i:s'); ?>').getTime();
+
+                      function updateCountdown() {
+                        const now = new Date().getTime();
+                        const distance = targetDate - now;
+
+                        if (distance < 0) {
+                          document.getElementById('countdown-timer').innerHTML = 'Estimasi waktu telah berakhir';
+                          document.getElementById('countdown-alert').classList.remove('alert-info');
+                          document.getElementById('countdown-alert').classList.add('alert-warning');
+                          clearInterval(countdownInterval);
+                          return;
+                        }
+
+                        // Hitung mundur menggunakan date object untuk akurasi bulan
+                        const currentDate = new Date(now);
+                        const endDate = new Date(targetDate);
+
+                        let years = endDate.getFullYear() - currentDate.getFullYear();
+                        let months = endDate.getMonth() - currentDate.getMonth();
+                        let days = endDate.getDate() - currentDate.getDate();
+                        let hours = endDate.getHours() - currentDate.getHours();
+                        let minutes = endDate.getMinutes() - currentDate.getMinutes();
+                        let seconds = endDate.getSeconds() - currentDate.getSeconds();
+
+                        // Adjustment untuk nilai negatif
+                        if (seconds < 0) {
+                          seconds += 60;
+                          minutes--;
+                        }
+                        if (minutes < 0) {
+                          minutes += 60;
+                          hours--;
+                        }
+                        if (hours < 0) {
+                          hours += 24;
+                          days--;
+                        }
+                        if (days < 0) {
+                          const prevMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0);
+                          days += prevMonth.getDate();
+                          months--;
+                        }
+                        if (months < 0) {
+                          months += 12;
+                          years--;
+                        }
+
+                        // Format output - hanya tampilkan yang tidak nol
+                        let countdownText = '';
+
+                        if (years > 0) countdownText += years + ' tahun ';
+                        if (months > 0) countdownText += months + ' bulan ';
+                        if (days > 0) countdownText += days + ' hari ';
+                        countdownText += hours + ' jam ' + minutes + ' menit ' + seconds + ' detik';
+
+                        document.getElementById('countdown-timer').innerHTML = countdownText.trim();
+
+                        // Ubah warna alert jika kurang dari 3 bulan
+                        const threeMonthsInMs = 90 * 24 * 60 * 60 * 1000;
+                        const alertElement = document.getElementById('countdown-alert');
+
+                        if (distance < threeMonthsInMs) {
+                          alertElement.classList.remove('alert-info');
+                          alertElement.classList.add('alert-warning');
+                        }
+                      }
+
+                      // Update countdown setiap 1 detik
+                      updateCountdown();
+                      const countdownInterval = setInterval(updateCountdown, 1000);
+                    </script>
+                  <?php } else { ?>
+                    <div class="alert alert-info mt-3" role="alert">
+                      <i class="fa-solid fa-clock me-2"></i>
+                      <strong>Estimasi Proses Verifikasi Kementerian: 1 tahun 6 bulan</strong>
+                    </div>
+                  <?php } ?>
+
+                  <div class="alert alert-success mt-3" role="alert">
+                    <i class="fa-solid fa-check-circle me-2"></i>
+                    Merek Anda telah diajukan ke Kementerian. Proses verifikasi sedang berlangsung. Anda akan mendapatkan notifikasi jika hasil verifikasi kementerian terbit.
+                  </div>
+
                 <?php elseif ($statusKey === 'sertifikatterbit'): ?>
-  <p class="m-0 mb-4"><?php echo htmlspecialchars($data['desc']); ?></p>
-  
-  <!-- Cek file mana yang tersedia -->
-  <?php if ($sertifikatMerek && file_exists($sertifikatMerek)): ?>
-    <!-- JIKA ADA SERTIFIKAT (DITERIMA) -->
-    <div class="card border-success">
-      <div class="card-body">
-        <div class="text-center mb-3">
-          <i class="fa-solid fa-award text-success" style="font-size: 4rem;"></i>
-        </div>
-        <h5 class="text-center text-success fw-bold mb-3">
-          Selamat! Merek Anda Telah Terdaftar
-        </h5>
-        <div class="alert alert-success mb-3">
-          <i class="fa-solid fa-check-circle me-2"></i>
-          <strong>Sertifikat Merek Tersedia</strong>
-          <p class="mb-0 mt-2">Sertifikat merek Anda telah diterbitkan oleh Kementerian. Silakan download di bawah ini.</p>
-        </div>
-        
-        <div class="d-grid gap-2">
-          <a class="btn btn-success btn-lg" href="<?php echo htmlspecialchars($sertifikatMerek); ?>" target="_blank" download>
-            <i class="fa-solid fa-download me-2"></i> Download Sertifikat Merek
-          </a>
-          <a class="btn btn-outline-success" href="<?php echo htmlspecialchars($sertifikatMerek); ?>" target="_blank">
-            <i class="fa-solid fa-eye me-2"></i> Preview Sertifikat
-          </a>
-        </div>
-        
-        <div class="alert alert-info mt-3 mb-0">
-          <i class="fa-solid fa-info-circle me-2"></i>
-          <strong>Informasi Penting:</strong>
-          <ul class="mb-0 mt-2" style="padding-left: 20px;">
-            <li><strong>Masa Berlaku:</strong> 10 tahun sejak tanggal penerbitan</li>
-            <li><strong>Perlindungan:</strong> Merek Anda dilindungi secara hukum di Indonesia</li>
-            <li><strong>Perpanjangan:</strong> Dapat diperpanjang sebelum masa berlaku habis</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-    
-  <?php elseif ($suratPenolakan && file_exists($suratPenolakan)): ?>
-    <!-- JIKA ADA SURAT PENOLAKAN (DITOLAK) -->
-    <div class="card border-danger">
-      <div class="card-body">
-        <div class="text-center mb-3">
-          <i class="fa-solid fa-times-circle text-danger" style="font-size: 4rem;"></i>
-        </div>
-        <h5 class="text-center text-danger fw-bold mb-3">
-          Permohonan Merek Ditolak
-        </h5>
-        <div class="alert alert-danger mb-3">
-          <i class="fa-solid fa-exclamation-triangle me-2"></i>
-          <strong>Surat Penolakan dari Kementerian</strong>
-          <p class="mb-0 mt-2">Mohon maaf, permohonan merek Anda tidak dapat disetujui oleh Kementerian. Silakan download surat penolakan untuk mengetahui alasan detail.</p>
-        </div>
-        
-        <div class="d-grid gap-2">
-          <a class="btn btn-danger btn-lg" href="<?php echo htmlspecialchars($suratPenolakan); ?>" target="_blank" download>
-            <i class="fa-solid fa-download me-2"></i> Download Surat Penolakan
-          </a>
-          <a class="btn btn-outline-danger" href="<?php echo htmlspecialchars($suratPenolakan); ?>" target="_blank">
-            <i class="fa-solid fa-eye me-2"></i> Preview Surat Penolakan
-          </a>
-        </div>
-        
-        <div class="alert alert-warning mt-3 mb-0">
-          <i class="fa-solid fa-lightbulb me-2"></i>
-          <strong>Informasi Penting!</strong>
-          <ul class="mb-0 mt-2" style="padding-left: 20px;">
-            <li>Mohon maaf untuk fasilitasi merk gratis tidak bisa dilanjutkan.</li>
-            <li>Anda tidak bisa mengajukan kembali fasilitasi merk di Dinas Perindustrian dan Perdagangan Kab. Sidoarjo</li>
-            <li>Silahkan mengajukan Mandiri atau hubungi Admin Dinas Perindustrian dan Perdagangan Kab. Sidoarjo untuk informasi lebih lanjut</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-    
-  <?php else: ?>
-    <!-- JIKA BELUM ADA FILE -->
-    <div class="alert alert-warning">
-      <i class="fa-solid fa-clock me-2"></i>
-      <strong>Menunggu Hasil Verifikasi</strong>
-      <p class="mb-0 mt-2">Hasil verifikasi dari Kementerian belum tersedia. Silakan hubungi admin untuk informasi lebih lanjut.</p>
-    </div>
-  <?php endif; ?>
-  
-<?php else: ?>
-  <p class="m-0"><?php echo htmlspecialchars($data['desc']); ?></p>
-<?php endif; ?>
+                  <p class="m-0 mb-4"><?php echo htmlspecialchars($data['desc']); ?></p>
+
+                  <!-- Cek file mana yang tersedia -->
+                  <?php if ($sertifikatMerek && file_exists($sertifikatMerek)): ?>
+                    <!-- JIKA ADA SERTIFIKAT (DITERIMA) -->
+                    <div class="card border-success">
+                      <div class="card-body">
+                        <div class="text-center mb-3">
+                          <i class="fa-solid fa-award text-success" style="font-size: 4rem;"></i>
+                        </div>
+                        <h5 class="text-center text-success fw-bold mb-3">
+                          Selamat! Merek Anda Telah Terdaftar
+                        </h5>
+                        <div class="alert alert-success mb-3">
+                          <i class="fa-solid fa-check-circle me-2"></i>
+                          <strong>Sertifikat Merek Tersedia</strong>
+                          <p class="mb-0 mt-2">Sertifikat merek Anda telah diterbitkan oleh Kementerian. Silakan download di bawah ini.</p>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                          <a class="btn btn-success btn-lg" href="<?php echo htmlspecialchars($sertifikatMerek); ?>" target="_blank" download>
+                            <i class="fa-solid fa-download me-2"></i> Download Sertifikat Merek
+                          </a>
+                        </div>
+
+                        <?php
+                        // Ambil tanggal upload Sertifikat Merek untuk countdown
+                        $stmt = $pdo->prepare("SELECT tgl_upload FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 7 ORDER BY tgl_upload DESC LIMIT 1");
+                        $stmt->execute([$pendaftaran['id_pendaftaran']]);
+                        $sertifikat_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                        if ($sertifikat_data && $sertifikat_data['tgl_upload']) {
+                          $tgl_terbit_sertifikat = new DateTime($sertifikat_data['tgl_upload']);
+                          $tgl_kadaluarsa = clone $tgl_terbit_sertifikat;
+                          $tgl_kadaluarsa->add(new DateInterval('P10Y')); // Tambah 10 tahun
+                          $tgl_kadaluarsa->setTime(0, 0, 0); // Set ke jam 00:00:00
+
+                          $tgl_kadaluarsa_formatted = $tgl_kadaluarsa->format('Y-m-d H:i:s');
+
+                          // Format tanggal dalam Bahasa Indonesia
+                          $bulan_indonesia = [
+                            1 => 'Januari',
+                            2 => 'Februari',
+                            3 => 'Maret',
+                            4 => 'April',
+                            5 => 'Mei',
+                            6 => 'Juni',
+                            7 => 'Juli',
+                            8 => 'Agustus',
+                            9 => 'September',
+                            10 => 'Oktober',
+                            11 => 'November',
+                            12 => 'Desember'
+                          ];
+
+                          $tanggal = $tgl_kadaluarsa->format('d');
+                          $bulan = $bulan_indonesia[(int)$tgl_kadaluarsa->format('m')];
+                          $tahun = $tgl_kadaluarsa->format('Y');
+
+                          $tgl_kadaluarsa_indo = "$tanggal $bulan $tahun";
+                        ?>
+                          <div class="alert alert-warning mt-3" role="alert" id="countdown-sertifikat-alert">
+                            <i class="fa-solid fa-hourglass-half me-2"></i>
+                            <strong>Masa Berlaku Sertifikat:</strong>
+                            <div class="mt-2" style="font-size: 1.1rem; font-weight: 600;">
+                              <span id="countdown-sertifikat-timer">Menghitung...</span>
+                            </div>
+                            <small class="d-block mt-2 text-muted">
+                              Sertifikat berlaku hingga: <?php echo $tgl_kadaluarsa_indo; ?> pukul 00:00 WIB
+                            </small>
+                          </div>
+
+                          <script>
+                            // Set target date untuk countdown sertifikat (10 tahun dari terbit)
+                            const targetDateSertifikat = new Date('<?php echo $tgl_kadaluarsa_formatted; ?>').getTime();
+                            const startDateSertifikat = new Date('<?php echo $tgl_terbit_sertifikat->format('Y-m-d H:i:s'); ?>').getTime();
+
+                            function updateCountdownSertifikat() {
+                              const now = new Date().getTime();
+                              const distance = targetDateSertifikat - now;
+
+                              if (distance < 0) {
+                                document.getElementById('countdown-sertifikat-timer').innerHTML = 'Masa berlaku sertifikat telah berakhir';
+                                document.getElementById('countdown-sertifikat-alert').classList.remove('alert-warning');
+                                document.getElementById('countdown-sertifikat-alert').classList.add('alert-danger');
+                                clearInterval(countdownSertifikatInterval);
+                                return;
+                              }
+
+                              // Hitung mundur menggunakan date object untuk akurasi bulan
+                              const currentDate = new Date(now);
+                              const endDate = new Date(targetDateSertifikat);
+
+                              let years = endDate.getFullYear() - currentDate.getFullYear();
+                              let months = endDate.getMonth() - currentDate.getMonth();
+                              let days = endDate.getDate() - currentDate.getDate();
+                              let hours = endDate.getHours() - currentDate.getHours();
+                              let minutes = endDate.getMinutes() - currentDate.getMinutes();
+                              let seconds = endDate.getSeconds() - currentDate.getSeconds();
+
+                              // Adjustment untuk nilai negatif
+                              if (seconds < 0) {
+                                seconds += 60;
+                                minutes--;
+                              }
+                              if (minutes < 0) {
+                                minutes += 60;
+                                hours--;
+                              }
+                              if (hours < 0) {
+                                hours += 24;
+                                days--;
+                              }
+                              if (days < 0) {
+                                const prevMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0);
+                                days += prevMonth.getDate();
+                                months--;
+                              }
+                              if (months < 0) {
+                                months += 12;
+                                years--;
+                              }
+
+                              // Format output
+                              let countdownText = '';
+
+                              if (years > 0) countdownText += years + ' tahun ';
+                              if (months > 0) countdownText += months + ' bulan ';
+                              if (days > 0) countdownText += days + ' hari ';
+                              countdownText += hours + ' jam ' + minutes + ' menit ' + seconds + ' detik';
+
+                              document.getElementById('countdown-sertifikat-timer').innerHTML = countdownText.trim();
+
+                              // Ubah warna alert jika kurang dari 1 tahun
+                              const oneYearInMs = 365 * 24 * 60 * 60 * 1000;
+                              const alertElement = document.getElementById('countdown-sertifikat-alert');
+
+                              if (distance < oneYearInMs) {
+                                alertElement.classList.remove('alert-warning');
+                                alertElement.classList.add('alert-danger');
+                              }
+                            }
+
+                            // Update countdown setiap 1 detik
+                            updateCountdownSertifikat();
+                            const countdownSertifikatInterval = setInterval(updateCountdownSertifikat, 1000);
+                          </script>
+                        <?php } ?>
+
+                        <div class="alert alert-info mt-3 mb-0">
+                          <i class="fa-solid fa-info-circle me-2"></i>
+                          <strong>Informasi Penting:</strong>
+                          <ul class="mb-0 mt-2" style="padding-left: 20px;">
+                            <li><strong>Masa Berlaku:</strong> 10 tahun sejak tanggal penerbitan</li>
+                            <li><strong>Perlindungan:</strong> Merek Anda dilindungi secara hukum di Indonesia</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  <?php elseif ($suratPenolakan && file_exists($suratPenolakan)): ?>
+                    <!-- JIKA ADA SURAT PENOLAKAN (DITOLAK) -->
+                    <div class="card border-danger">
+                      <div class="card-body">
+                        <div class="text-center mb-3">
+                          <i class="fa-solid fa-times-circle text-danger" style="font-size: 4rem;"></i>
+                        </div>
+                        <h5 class="text-center text-danger fw-bold mb-3">
+                          Permohonan Merek Ditolak
+                        </h5>
+                        <div class="alert alert-danger mb-3">
+                          <i class="fa-solid fa-exclamation-triangle me-2"></i>
+                          <strong>Surat Penolakan dari Kementerian</strong>
+                          <p class="mb-0 mt-2">Mohon maaf, permohonan merek Anda tidak dapat disetujui oleh Kementerian. Silakan download surat penolakan untuk mengetahui alasan detail.</p>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                          <a class="btn btn-danger btn-lg" href="<?php echo htmlspecialchars($suratPenolakan); ?>" target="_blank" download>
+                            <i class="fa-solid fa-download me-2"></i> Download Surat Penolakan
+                          </a>
+                        </div>
+
+                        <div class="alert alert-warning mt-3 mb-0">
+                          <i class="fa-solid fa-lightbulb me-2"></i>
+                          <strong>Informasi Penting!</strong>
+                          <ul class="mb-0 mt-2" style="padding-left: 20px;">
+                            <li>Mohon maaf untuk fasilitasi merk gratis tidak bisa dilanjutkan.</li>
+                            <li>Anda tidak bisa mengajukan kembali fasilitasi merk di Dinas Perindustrian dan Perdagangan Kab. Sidoarjo</li>
+                            <li>Silahkan mengajukan Mandiri atau hubungi Admin Dinas Perindustrian dan Perdagangan Kab. Sidoarjo untuk informasi lebih lanjut</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+
+                  <?php else: ?>
+                    <!-- JIKA BELUM ADA FILE -->
+                    <div class="alert alert-warning">
+                      <i class="fa-solid fa-clock me-2"></i>
+                      <strong>Menunggu Hasil Verifikasi</strong>
+                      <p class="mb-0 mt-2">Hasil verifikasi dari Kementerian belum tersedia. Silakan hubungi admin untuk informasi lebih lanjut.</p>
+                    </div>
+                  <?php endif; ?>
+
+                <?php else: ?>
+                  <p class="m-0"><?php echo htmlspecialchars($data['desc']); ?></p>
+                <?php endif; ?>
+
+                <!-- ===== SECTION DOKUMEN YANG TERSEDIA ===== -->
+                <?php
+                // Cek dokumen mana saja yang tersedia
+                $ada_dokumen = false;
+
+                // Cek Surat Keterangan IKM
+                $stmt = $pdo->prepare("SELECT file_path, tgl_upload FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 5 ORDER BY tgl_upload DESC LIMIT 1");
+                $stmt->execute([$pendaftaran['id_pendaftaran']]);
+                $doc_surat_ikm = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($doc_surat_ikm && file_exists($doc_surat_ikm['file_path'])) $ada_dokumen = true;
+
+                // Cek Bukti Pendaftaran
+                $stmt = $pdo->prepare("SELECT file_path, tgl_upload FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 6 ORDER BY tgl_upload DESC LIMIT 1");
+                $stmt->execute([$pendaftaran['id_pendaftaran']]);
+                $doc_bukti_pendaftaran = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($doc_bukti_pendaftaran && file_exists($doc_bukti_pendaftaran['file_path'])) $ada_dokumen = true;
+
+                // Cek Surat Berkas Difasilitasi (dari pemohon)
+                $stmt = $pdo->prepare("SELECT file_path, tgl_upload FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 4 ORDER BY tgl_upload DESC LIMIT 1");
+                $stmt->execute([$pendaftaran['id_pendaftaran']]);
+                $doc_berkas_pemohon = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($doc_berkas_pemohon && file_exists($doc_berkas_pemohon['file_path'])) $ada_dokumen = true;
+                ?>
+
+                <?php if ($ada_dokumen): ?>
+                  <div class="info-card mt-4">
+                    <div class="info-header">
+                      <h2 class="info-title">
+                        <i class="fa-solid fa-folder-open me-2"></i>
+                        Dokumen yang Tersedia
+                      </h2>
+                    </div>
+
+                    <hr class="border-2 border-secondary w-100 line" />
+
+                    <p class="text-muted mb-4">
+                      <i class="fa-solid fa-info-circle me-2"></i>
+                      Berikut adalah dokumen-dokumen yang telah diupload dan tersedia untuk diunduh kapan saja.
+                    </p>
+
+                    <div class="row g-3">
+                      <!-- Surat Berkas Difasilitasi dari Pemohon -->
+                      <?php if ($doc_berkas_pemohon && file_exists($doc_berkas_pemohon['file_path'])): ?>
+                        <div class="col-md-6 col-lg-4">
+                          <div class="card border-secondary h-100">
+                            <div class="card-body">
+                              <div class="text-center mb-3">
+                                <i class="fa-solid fa-file-signature text-secondary" style="font-size: 3rem;"></i>
+                              </div>
+                              <h6 class="fw-bold text-center mb-3">Surat Kelengkapan Berkas Difasilitasi</h6>
+                              <div class="alert alert-success mb-3">
+                                <small>
+                                  <i class="fa-solid fa-check-circle me-1"></i>
+                                  <strong>File Tersedia</strong>
+                                </small>
+                                <p class="mb-0 mt-1" style="font-size: 0.85rem;">
+                                  <i class="fa-solid fa-calendar me-1"></i>
+                                  Diupload: <?php echo date('d/m/Y H:i', strtotime($doc_berkas_pemohon['tgl_upload'])); ?> WIB
+                                </p>
+                              </div>
+                              <div class="d-grid gap-2">
+                                <button class="btn btn-sm btn-outline-secondary btn-view"
+                                  data-src="<?php echo htmlspecialchars($doc_berkas_pemohon['file_path']); ?>"
+                                  data-title="Surat Kelengkapan Berkas">
+                                  <i class="bi bi-eye me-1"></i>Preview
+                                </button>
+                                <a class="btn btn-secondary btn-sm" href="<?php echo htmlspecialchars($doc_berkas_pemohon['file_path']); ?>" download>
+                                  <i class="fa-solid fa-download me-1"></i> Download
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      <?php endif; ?>
+
+                      <!-- Surat Keterangan IKM -->
+                      <?php if ($doc_surat_ikm && file_exists($doc_surat_ikm['file_path'])): ?>
+                        <div class="col-md-6 col-lg-4">
+                          <div class="card border-primary h-100">
+                            <div class="card-body">
+                              <div class="text-center mb-3">
+                                <i class="fa-solid fa-file text-primary" style="font-size: 3rem;"></i>
+                              </div>
+                              <h6 class="fw-bold text-center mb-3">Surat Keterangan IKM</h6>
+                              <div class="alert alert-success mb-3">
+                                <small>
+                                  <i class="fa-solid fa-check-circle me-1"></i>
+                                  <strong>File Tersedia</strong>
+                                </small>
+                                <p class="mb-0 mt-1" style="font-size: 0.85rem;">
+                                  <i class="fa-solid fa-calendar me-1"></i>
+                                  Diupload: <?php echo date('d/m/Y H:i', strtotime($doc_surat_ikm['tgl_upload'])); ?> WIB
+                                </p>
+                              </div>
+                              <div class="d-grid gap-2">
+                                <button class="btn btn-sm btn-outline-primary btn-view"
+                                  data-src="<?php echo htmlspecialchars($doc_surat_ikm['file_path']); ?>"
+                                  data-title="Surat IKM">
+                                  <i class="bi bi-eye me-1"></i>Preview
+                                </button>
+                                <a class="btn btn-primary btn-sm" href="<?php echo htmlspecialchars($doc_surat_ikm['file_path']); ?>" download>
+                                  <i class="fa-solid fa-download me-1"></i> Download
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      <?php endif; ?>
+
+                      <!-- Bukti Pendaftaran -->
+                      <?php if ($doc_bukti_pendaftaran && file_exists($doc_bukti_pendaftaran['file_path'])): ?>
+                        <div class="col-md-6 col-lg-4">
+                          <div class="card border-success h-100">
+                            <div class="card-body">
+                              <div class="text-center mb-3">
+                                <i class="fa-solid fa-file-circle-check text-success" style="font-size: 3rem;"></i>
+                              </div>
+                              <h6 class="fw-bold text-center mb-3">Bukti Pendaftaran</h6>
+                              <div class="alert alert-success mb-3">
+                                <small>
+                                  <i class="fa-solid fa-check-circle me-1"></i>
+                                  <strong>File Tersedia</strong>
+                                </small>
+                                <p class="mb-0 mt-1" style="font-size: 0.85rem;">
+                                  <i class="fa-solid fa-calendar me-1"></i>
+                                  Diupload: <?php echo date('d/m/Y H:i', strtotime($doc_bukti_pendaftaran['tgl_upload'])); ?> WIB
+                                </p>
+                              </div>
+                              <div class="d-grid gap-2">
+                                <button class="btn btn-sm btn-outline-success btn-view"
+                                  data-src="<?php echo htmlspecialchars($doc_bukti_pendaftaran['file_path']); ?>"
+                                  data-title="Bukti Pendaftaran">
+                                  <i class="bi bi-eye me-1"></i>Preview
+                                </button>
+                                <a class="btn btn-success btn-sm" href="<?php echo htmlspecialchars($doc_bukti_pendaftaran['file_path']); ?>" download>
+                                  <i class="fa-solid fa-download me-1"></i> Download
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      <?php endif; ?>
+
+                      <!-- Sertifikat Merek (jika sudah terbit) -->
+                      <?php if ($sertifikatMerek && file_exists($sertifikatMerek)): ?>
+                        <div class="col-md-6 col-lg-4">
+                          <div class="card border-warning h-100">
+                            <div class="card-body">
+                              <div class="text-center mb-3">
+                                <i class="fa-solid fa-award text-warning" style="font-size: 3rem;"></i>
+                              </div>
+                              <h6 class="fw-bold text-center mb-3">Sertifikat Merek</h6>
+                              <div class="alert alert-success mb-3">
+                                <small>
+                                  <i class="fa-solid fa-check-circle me-1"></i>
+                                  <strong>File Tersedia</strong>
+                                </small>
+                                <p class="mb-0 mt-1" style="font-size: 0.85rem;">
+                                  <i class="fa-solid fa-shield-halved me-1"></i>
+                                  Merek Terdaftar Resmi
+                                </p>
+                              </div>
+                              <div class="d-grid gap-2">
+                                <button class="btn btn-sm btn-outline-warning btn-view"
+                                  data-src="<?php echo htmlspecialchars($sertifikatMerek); ?>"
+                                  data-title="Sertifikat Merek">
+                                  <i class="bi bi-eye me-1"></i>Preview
+                                </button>
+                                <a class="btn btn-warning btn-sm" href="<?php echo htmlspecialchars($sertifikatMerek); ?>" download>
+                                  <i class="fa-solid fa-download me-1"></i> Download
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      <?php endif; ?>
+
+                      <!-- Surat Penolakan (jika ada) -->
+                      <?php if ($suratPenolakan && file_exists($suratPenolakan)): ?>
+                        <div class="col-md-6 col-lg-4">
+                          <div class="card border-danger h-100">
+                            <div class="card-body">
+                              <div class="text-center mb-3">
+                                <i class="fa-solid fa-file-circle-xmark text-danger" style="font-size: 3rem;"></i>
+                              </div>
+                              <h6 class="fw-bold text-center mb-3">Surat Penolakan</h6>
+                              <div class="alert alert-danger mb-3">
+                                <small>
+                                  <i class="fa-solid fa-exclamation-triangle me-1"></i>
+                                  <strong>File Tersedia</strong>
+                                </small>
+                                <p class="mb-0 mt-1" style="font-size: 0.85rem;">
+                                  <i class="fa-solid fa-info-circle me-1"></i>
+                                  Dari Kementerian
+                                </p>
+                              </div>
+                              <div class="d-grid gap-2">
+                                <button class="btn btn-sm btn-outline-danger btn-view"
+                                  data-src="<?php echo htmlspecialchars($suratPenolakan); ?>"
+                                  data-title="Surat Penolakan">
+                                  <i class="bi bi-eye me-1"></i>Preview
+                                </button>
+                                <a class="btn btn-danger btn-sm" href="<?php echo htmlspecialchars($suratPenolakan); ?>" download>
+                                  <i class="fa-solid fa-download me-1"></i> Download
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      <?php endif; ?>
+                    </div>
+                  </div>
+                <?php endif; ?>
+
               </div>
             </div>
           </div>
         </div>
 
         <div>
-          <strong>Nama Pemohon:</strong><br/>
+          <strong>Nama Pemohon:</strong><br />
           <p><?php echo strtoupper(htmlspecialchars($nama)); ?></p>
           <div class="mb-2 mt-2">
-            <strong>Nama Usaha:</strong><br/>
+            <strong>Nama Usaha:</strong><br />
             <p><?php echo htmlspecialchars($pendaftaran['nama_usaha']); ?></p>
           </div>
           <div class="mb-2">
-            <strong>Tanggal Pendaftaran:</strong><br/>
+            <strong>Tanggal Pendaftaran:</strong><br />
             <p><?php echo date('d F Y, H:i', strtotime($pendaftaran['tgl_daftar'])); ?> WIB</p>
           </div>
           <div class="mb-4">
-            <strong>Merek yang Didaftarkan:</strong><br/>
+            <strong>Merek yang Didaftarkan:</strong><br />
           </div>
         </div>
 
         <!-- Kartu alternatif merek -->
         <?php
         $merek_difasilitasi = $pendaftaran['merek_difasilitasi'];
-        
+
         $border1 = '';
         $border2 = '';
         $border3 = '';
         $badge1 = '';
         $badge2 = '';
         $badge3 = '';
-        
+
         if ($merek_difasilitasi) {
-            if ($merek_difasilitasi == 1) {
-                $border1 = 'border-success border-3';
-                $badge1 = '<span class="badge bg-success ms-2 mb-3">Difasilitasi</span>';
-                $border2 = 'border-danger border-2';
-                $badge2 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
-                $border3 = 'border-danger border-2';
-                $badge3 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
-            } elseif ($merek_difasilitasi == 2) {
-                $border1 = 'border-danger border-2';
-                $badge1 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
-                $border2 = 'border-success border-3';
-                $badge2 = '<span class="badge bg-success ms-2 mb-3">Difasilitasi</span>';
-                $border3 = 'border-danger border-2';
-                $badge3 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
-            } elseif ($merek_difasilitasi == 3) {
-                $border1 = 'border-danger border-2';
-                $badge1 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
-                $border2 = 'border-danger border-2';
-                $badge2 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
-                $border3 = 'border-success border-3';
-                $badge3 = '<span class="badge bg-success ms-2 mb-3">Difasilitasi</span>';
-            }
+          if ($merek_difasilitasi == 1) {
+            $border1 = 'border-success border-3';
+            $badge1 = '<span class="badge bg-success ms-2 mb-3">Difasilitasi</span>';
+            $border2 = 'border-danger border-2';
+            $badge2 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
+            $border3 = 'border-danger border-2';
+            $badge3 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
+          } elseif ($merek_difasilitasi == 2) {
+            $border1 = 'border-danger border-2';
+            $badge1 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
+            $border2 = 'border-success border-3';
+            $badge2 = '<span class="badge bg-success ms-2 mb-3">Difasilitasi</span>';
+            $border3 = 'border-danger border-2';
+            $badge3 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
+          } elseif ($merek_difasilitasi == 3) {
+            $border1 = 'border-danger border-2';
+            $badge1 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
+            $border2 = 'border-danger border-2';
+            $badge2 = '<span class="badge bg-danger ms-2 mb-3">Tidak Difasilitasi</span>';
+            $border3 = 'border-success border-3';
+            $badge3 = '<span class="badge bg-success ms-2 mb-3">Difasilitasi</span>';
+          }
         }
         ?>
-        
+
         <div class="row">
           <div class="col-md-4 mb-4">
             <div class="brand-card <?php echo $border1; ?>">
               <h3 class="brand-title">Merek Alternatif 1 (diutamakan)</h3>
               <?php echo $badge1; ?>
               <div class="brand-name-label">Nama Merek Alternatif 1</div>
-               <div class="brand-name-display"><?php echo htmlspecialchars($pendaftaran['nama_merek1']); ?></div>
-                <div class="logo-label">Logo Merek Alternatif 1</div>
+              <div class="brand-name-display"><?php echo htmlspecialchars($pendaftaran['nama_merek1']); ?></div>
+              <div class="logo-label">Logo Merek Alternatif 1</div>
               <div class="logo-container">
                 <?php if ($pendaftaran['logo1'] && file_exists($pendaftaran['logo1'])): ?>
                   <img src="<?php echo htmlspecialchars($pendaftaran['logo1']); ?>" alt="Logo 1" style="max-width: 200px; max-height: 200px;">
@@ -810,7 +1293,7 @@ try {
               <h3 class="brand-title">Merek Alternatif 2</h3>
               <?php echo $badge2; ?>
               <div class="brand-name-label">Nama Merek Alternatif 2</div>
-<div class="brand-name-display"><?php echo htmlspecialchars($pendaftaran['nama_merek2']); ?></div>
+              <div class="brand-name-display"><?php echo htmlspecialchars($pendaftaran['nama_merek2']); ?></div>
               <div class="logo-label">Logo Merek Alternatif 2</div>
               <div class="logo-container">
                 <?php if ($pendaftaran['logo2'] && file_exists($pendaftaran['logo2'])): ?>
@@ -845,7 +1328,35 @@ try {
     </div>
   </main>
 
-  <!-- Footer -->
+
+  <!-- Modal View Foto/PDF -->
+  <div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header py-2 bg-light">
+          <h6 class="modal-title mb-0" id="modalTitle"></h6>
+          <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-3">
+          <!-- Container untuk gambar -->
+          <div id="imageContainer" style="display: none;">
+            <img id="modalImage" src="" alt="Preview" class="img-fluid rounded" style="max-height: 50vh; width: 100%; object-fit: contain;" />
+          </div>
+
+          <!-- Container untuk PDF -->
+          <div id="pdfContainer" style="display: none;">
+            <iframe id="modalPdf" src="" style="width: 100%; height: 50vh; border: 1px solid #dee2e6; border-radius: 0.375rem;"></iframe>
+          </div>
+        </div>
+        <div class="modal-footer py-2 bg-light">
+          <a id="downloadBtn" href="#" download class="btn btn-success btn-sm">
+            <i class="bi bi-download me-1"></i>Download
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <footer class="footer">
     <div class="container text-center">
       <p class="mb-1">Copyright © 2025. All Rights Reserved.</p>
@@ -862,32 +1373,32 @@ try {
         if (confirm('Apakah Anda yakin ingin melanjutkan dengan Merek Alternatif <?php echo $pendaftaran['merek_difasilitasi'] ?? '2'; ?>?')) {
           btnLanjut.disabled = true;
           btnLanjut.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Memproses...';
-          
+
           const formData = new FormData();
           formData.append('ajax_action', 'konfirmasi_lanjut');
           formData.append('id_pendaftaran', <?php echo $pendaftaran['id_pendaftaran']; ?>);
-          
+
           fetch(window.location.href, {
-            method: 'POST',
-            body: formData
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              alert('Konfirmasi berhasil! Status diperbarui ke Surat Keterangan Difasilitasi. Silakan download dan upload surat yang sudah ditandatangani.');
-              location.reload();
-            } else {
-              alert('Terjadi kesalahan: ' + data.message);
+              method: 'POST',
+              body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                alert('Konfirmasi berhasil! Status diperbarui ke Surat Keterangan Difasilitasi. Silakan download dan upload surat yang sudah ditandatangani.');
+                location.reload();
+              } else {
+                alert('Terjadi kesalahan: ' + data.message);
+                btnLanjut.disabled = false;
+                btnLanjut.innerHTML = 'Lanjut';
+              }
+            })
+            .catch(error => {
+              console.error('Error:', error);
+              alert('Terjadi kesalahan saat mengirim konfirmasi.');
               btnLanjut.disabled = false;
               btnLanjut.innerHTML = 'Lanjut';
-            }
-          })
-          .catch(error => {
-            console.error('Error:', error);
-            alert('Terjadi kesalahan saat mengirim konfirmasi.');
-            btnLanjut.disabled = false;
-            btnLanjut.innerHTML = 'Lanjut';
-          });
+            });
         }
       });
     }
@@ -897,10 +1408,10 @@ try {
     if (formSurat) {
       formSurat.addEventListener('submit', function(e) {
         e.preventDefault();
-        
+
         const fileInput = document.getElementById('fileSurat');
         const btnKirim = document.getElementById('btnKirimSurat');
-        
+
         if (!fileInput.files[0]) {
           alert('Silakan pilih file terlebih dahulu!');
           return;
@@ -913,9 +1424,9 @@ try {
         }
 
         // Validasi format file
-        const allowedExtensions = /(\.pdf|\.jpg|\.jpeg|\.png)$/i;
+        const allowedExtensions = /(\.pdf)$/i;
         if (!allowedExtensions.exec(fileInput.files[0].name)) {
-          alert('Format file harus PDF, JPG, JPEG, atau PNG!');
+          alert('Format file harus PDF!');
           return;
         }
 
@@ -933,33 +1444,245 @@ try {
         btnKirim.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Mengirim...';
 
         fetch(window.location.href, {
-          method: 'POST',
-          body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            alert('Surat berhasil dikirim! Status diperbarui ke Menunggu Bukti Pendaftaran. Admin sekarang dapat melihat surat Anda.');
-            location.reload();
-          } else {
-            alert('Gagal mengirim surat: ' + data.message);
+            method: 'POST',
+            body: formData
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              alert('Surat berhasil dikirim! Status diperbarui ke Menunggu Bukti Pendaftaran. Admin sekarang dapat melihat surat Anda.');
+              location.reload();
+            } else {
+              alert('Gagal mengirim surat: ' + data.message);
+              btnKirim.disabled = false;
+              btnKirim.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Kirim Surat';
+            }
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            alert('Terjadi kesalahan saat mengirim file.');
             btnKirim.disabled = false;
             btnKirim.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Kirim Surat';
-          }
-        })
-        .catch(error => {
-          console.error('Error:', error);
-          alert('Terjadi kesalahan saat mengirim file.');
-          btnKirim.disabled = false;
-          btnKirim.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Kirim Surat';
-        });
+          });
       });
     }
 
-    // Auto-refresh setiap 5 menit untuk cek update status
+    // Auto-refresh
     setInterval(function() {
       location.reload();
-    }, 5 * 60 * 1000); // 5 menit
+    }, 5 * 60 * 1000);
+
+    // View image/pdf modal
+    document.querySelectorAll('.btn-view').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const src = this.getAttribute('data-src');
+        const title = this.getAttribute('data-title');
+
+        const modalTitle = document.getElementById('modalTitle');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const imageContainer = document.getElementById('imageContainer');
+        const pdfContainer = document.getElementById('pdfContainer');
+        const modalImg = document.getElementById('modalImage');
+        const modalPdf = document.getElementById('modalPdf');
+
+        modalTitle.textContent = title;
+        downloadBtn.href = src;
+
+        // Cek ekstensi file
+        const fileExtension = src.split('.').pop().toLowerCase();
+
+        if (fileExtension === 'pdf') {
+          // Tampilkan PDF
+          imageContainer.style.display = 'none';
+          pdfContainer.style.display = 'block';
+          modalPdf.src = src + '#toolbar=0'; // Hide PDF toolbar
+        } else {
+          // Tampilkan gambar
+          pdfContainer.style.display = 'none';
+          imageContainer.style.display = 'block';
+          modalImg.src = src;
+        }
+
+        // Buka modal
+        const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+        modal.show();
+      });
+    });
+
+    // Bersihkan saat modal ditutup
+    const imageModal = document.getElementById('imageModal');
+    imageModal.addEventListener('hidden.bs.modal', function() {
+      document.getElementById('modalPdf').src = '';
+      document.getElementById('modalImage').src = '';
+    });
+
+    // Force z-index saat modal terbuka
+    imageModal.addEventListener('show.bs.modal', function() {
+      this.style.zIndex = '1055';
+      setTimeout(() => {
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (backdrop) backdrop.style.zIndex = '1050';
+      }, 50);
+    });
+
+    // Bersihkan iframe saat modal ditutup
+    document.getElementById('imageModal').addEventListener('hidden.bs.modal', function() {
+      document.getElementById('modalPdf').src = '';
+      document.getElementById('modalImage').src = '';
+    });
+
+    // ===== PREVIEW FILE DALAM BENTUK ICON UNTUK STEP 3 UPLOAD SURAT =====
+    document.addEventListener('DOMContentLoaded', function() {
+      const fileInput = document.getElementById('fileSurat');
+      const filePreview = document.getElementById('filePreview');
+      const fileIcon = document.getElementById('fileIcon');
+      const fileName = document.getElementById('fileName');
+      const fileSize = document.getElementById('fileSize');
+      const btnViewFile = document.getElementById('btnViewFile');
+
+      if (fileInput && filePreview && fileIcon && fileName && fileSize && btnViewFile) {
+        console.log('Preview icon elements found');
+
+        let currentFileData = null;
+        let currentFileName = null;
+        let currentFileType = null;
+
+        fileInput.addEventListener('change', function(e) {
+          const file = e.target.files[0];
+          console.log('File selected:', file);
+
+          if (!file) {
+            filePreview.style.display = 'none';
+            currentFileData = null;
+            return;
+          }
+
+          // Validasi ukuran file
+          if (file.size > 5 * 1024 * 1024) {
+            alert('Ukuran file maksimal 5MB!');
+            fileInput.value = '';
+            filePreview.style.display = 'none';
+            return;
+          }
+
+          // Validasi tipe file
+          const allowedTypes = ['application/pdf'];
+          if (!allowedTypes.includes(file.type)) {
+            alert('Format file harus PDF!');
+            fileInput.value = '';
+            filePreview.style.display = 'none';
+            return;
+          }
+
+          // Tampilkan icon preview
+          displayFileIcon(file);
+
+          // Baca file untuk preview modal
+          const reader = new FileReader();
+
+          reader.onload = function(e) {
+            console.log('File loaded for preview');
+            currentFileData = e.target.result;
+            currentFileName = file.name;
+            currentFileType = file.type;
+          };
+
+          reader.onerror = function() {
+            console.error('Error reading file');
+            alert('Error membaca file. Silakan coba file lain.');
+          };
+
+          reader.readAsDataURL(file);
+        });
+
+        // Fungsi untuk menampilkan icon file
+        function displayFileIcon(file) {
+          const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+
+          // Set icon berdasarkan tipe file
+          if (file.type === 'application/pdf') {
+            fileIcon.innerHTML = '<i class="fa-solid fa-file-signature text-danger"></i>';
+          } else if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+            fileIcon.innerHTML = '<i class="fa-solid fa-file-image text-warning"></i>';
+          } else if (file.type === 'image/png') {
+            fileIcon.innerHTML = '<i class="fa-solid fa-file-image text-info"></i>';
+          } else {
+            fileIcon.innerHTML = '<i class="fa-solid fa-file text-secondary"></i>';
+          }
+
+          // Set nama dan ukuran file
+          fileName.textContent = file.name;
+          fileSize.textContent = `${fileSizeMB} MB • ${getFileTypeText(file.type)}`;
+
+          // Tampilkan preview
+          filePreview.style.display = 'block';
+        }
+
+        // Fungsi untuk mendapatkan teks tipe file
+        function getFileTypeText(fileType) {
+          switch (fileType) {
+            case 'application/pdf':
+              return 'PDF Document';
+            case 'image/jpeg':
+            case 'image/jpg':
+              return 'JPEG Image';
+            case 'image/png':
+              return 'PNG Image';
+            default:
+              return 'File';
+          }
+        }
+
+        // Handler untuk tombol Lihat
+        btnViewFile.addEventListener('click', function() {
+          if (currentFileData && currentFileName && currentFileType) {
+            showFullPreview(currentFileData, currentFileName, currentFileType);
+          } else {
+            alert('File belum siap untuk dilihat. Silakan tunggu sebentar.');
+          }
+        });
+
+        // Fungsi untuk menampilkan preview full size di modal
+        function showFullPreview(fileData, fileName, fileType) {
+          const modalTitle = document.getElementById('modalTitle');
+          const downloadBtn = document.getElementById('downloadBtn');
+          const imageContainer = document.getElementById('imageContainer');
+          const pdfContainer = document.getElementById('pdfContainer');
+          const modalImg = document.getElementById('modalImage');
+          const modalPdf = document.getElementById('modalPdf');
+
+          if (!modalTitle) {
+            console.error('Modal elements not found');
+            return;
+          }
+
+          modalTitle.textContent = 'Preview: ' + fileName;
+
+          if (fileType === 'application/pdf') {
+            // Tampilkan PDF di modal
+            imageContainer.style.display = 'none';
+            pdfContainer.style.display = 'block';
+            modalPdf.src = fileData + '#toolbar=0';
+            downloadBtn.style.display = 'none';
+          } else {
+            // Tampilkan gambar di modal
+            pdfContainer.style.display = 'none';
+            imageContainer.style.display = 'block';
+            modalImg.src = fileData;
+            downloadBtn.style.display = 'block';
+            downloadBtn.href = fileData;
+            downloadBtn.download = fileName;
+          }
+
+          // Buka modal
+          const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+          modal.show();
+        }
+      } else {
+        console.log('Preview icon elements NOT found');
+      }
+    });
   </script>
 </body>
+
 </html>

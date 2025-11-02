@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'process/config_db.php';
+require_once 'process/notification_helper.php';
 date_default_timezone_set('Asia/Jakarta');
 
 // Ambil ID pendaftaran dari URL
@@ -11,7 +12,7 @@ if ($id_pendaftaran == 0) {
   exit();
 }
 
-// ===== HANDLER AJAX REQUEST ===== (Ganti bagian ini di detail-pendaftar.php)
+// ===== HANDLER AJAX REQUEST ===== 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
   header('Content-Type: application/json');
 
@@ -27,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
 
       $file = $_FILES['fileSuratKeterangan'];
       $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-      $allowed_extensions = ['pdf', 'jpg', 'jpeg', 'png'];
+      $allowed_extensions = ['pdf'];
 
       if (!in_array($file_extension, $allowed_extensions)) {
         echo json_encode(['success' => false, 'message' => 'Format file tidak diizinkan']);
@@ -81,8 +82,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
           $stmt = $pdo->prepare("INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path) VALUES (?, 5, ?, ?)");
           $stmt->execute([$id_pendaftaran, $tgl_upload, $target]);
 
+          // KIRIM NOTIFIKASI KE PEMOHON
+          $notif_sent = notifSuratKeteranganIKM($id_pendaftaran);
+
           $pdo->commit();
-          echo json_encode(['success' => true, 'message' => 'Surat Keterangan IKM berhasil diupload']);
+          echo json_encode([
+            'success' => true,
+            'message' => 'Surat Keterangan IKM berhasil diupload',
+            'notif_sent' => $notif_sent
+          ]);
         } catch (PDOException $e) {
           $pdo->rollBack();
           if (file_exists($target)) unlink($target);
@@ -103,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
 
       $file = $_FILES['fileBuktiPendaftaran'];
       $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-      $allowed_extensions = ['pdf', 'jpg', 'jpeg', 'png'];
+      $allowed_extensions = ['pdf'];
 
       if (!in_array($file_extension, $allowed_extensions)) {
         echo json_encode(['success' => false, 'message' => 'Format file tidak diizinkan']);
@@ -161,11 +169,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
           $stmt = $pdo->prepare("UPDATE pendaftaran SET status_validasi = 'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' WHERE id_pendaftaran = ?");
           $stmt->execute([$id_pendaftaran]);
 
+          // KIRIM NOTIFIKASI KE PEMOHON
+          $notif_sent = notifBuktiPendaftaran($id_pendaftaran);
+
           $pdo->commit();
           echo json_encode([
             'success' => true,
             'message' => 'Bukti Pendaftaran berhasil diupload',
-            'new_status' => 'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian'
+            'new_status' => 'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian',
+            'notif_sent' => $notif_sent
           ]);
         } catch (PDOException $e) {
           $pdo->rollBack();
@@ -177,12 +189,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
       }
       exit;
     }
+    
   } catch (PDOException $e) {
     error_log("Error AJAX: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'Terjadi kesalahan database: ' . $e->getMessage()]);
     exit;
   }
+  
 }
+
 
 try {
   // Query untuk mengambil data lengkap
@@ -292,6 +307,21 @@ try {
 } catch (PDOException $e) {
   die("Error: " . $e->getMessage());
 }
+
+function getBadgeClass($status)
+{
+  $badges = [
+    'Pengecekan Berkas' => 'scan',
+    'Berkas Baru' => 'scan',
+    'Tidak Bisa Difasilitasi' => 'dangerish',
+    'Konfirmasi Lanjut' => 'violet',
+    'Surat Keterangan Difasilitasi' => 'infoish',
+    'Menunggu Bukti Pendaftaran' => 'emerald',
+    'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' => 'yellow',
+    'Hasil Verifikasi Kementerian' => 'mint'
+  ];
+  return $badges[$status] ?? 'secondary';
+}
 ?>
 <!doctype html>
 <html lang="id">
@@ -306,92 +336,6 @@ try {
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/detail-pendaftar.css">
-  <style>
-    .document-section {
-      background: #f8f9fa;
-      border: 2px solid #dee2e6;
-      border-radius: 8px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .document-title {
-      font-weight: 600;
-      font-size: 1.1rem;
-      margin-bottom: 1rem;
-      color: #495057;
-    }
-
-    .upload-box {
-      border: 2px dashed #6c757d;
-      border-radius: 8px;
-      padding: 2rem;
-      text-align: center;
-      background: white;
-      transition: all 0.3s;
-    }
-
-    .upload-box:hover {
-      border-color: #495057;
-      background: #f8f9fa;
-    }
-
-    .file-info {
-      background: #e7f3ff;
-      border: 1px solid #b3d9ff;
-      border-radius: 6px;
-      padding: 1rem;
-      margin-top: 1rem;
-    }
-
-    .status-badge {
-      display: inline-block;
-      padding: 0.5rem 1rem;
-      border-radius: 20px;
-      font-weight: 500;
-      font-size: 0.9rem;
-    }
-
-    .status-menunggu {
-      background: #fff3cd;
-      color: #856404;
-    }
-
-    .status-tersedia {
-      background: #d1e7dd;
-      color: #0f5132;
-    }
-
-    .download-section {
-      background: #fff3e0;
-      border: 2px solid #ff9800;
-      border-radius: 8px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .download-section h5 {
-      color: #e65100;
-      font-weight: 600;
-      margin-bottom: 1rem;
-    }
-
-    /* Style untuk section surat TTD pemohon */
-    .surat-ttd-section {
-      background: #e8f5e9;
-      border: 2px solid #4caf50;
-      border-radius: 8px;
-      padding: 1.5rem;
-      margin-top: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .surat-ttd-section h5 {
-      color: #2e7d32;
-      font-weight: 600;
-      margin-bottom: 1rem;
-    }
-  </style>
 </head>
 
 <body>
@@ -410,9 +354,9 @@ try {
             <div class="small text-muted-600"><?php echo $tgl_daftar; ?></div>
             <h2 class="h5 fw-bold mb-0"><?php echo strtoupper($data['nama_lengkap']); ?></h2>
           </div>
-          <button class="btn btn-secondary btn-pill fw-semibold" id="statusButton">
-            <?php echo $data['status_validasi'] == 'Menunggu' ? 'Pengecekan Berkas' : $data['status_validasi']; ?>
-          </button>
+          <p class="badge text-bg-<?php echo getBadgeClass($data['status_validasi']); ?>  fw-semibold rounded-pill fs-6 py-2" id="statusButton">
+            <?php echo $data['status_validasi'] == 'Pengecekan Berkas' ? 'Berkas Baru' : $data['status_validasi']; ?>
+          </p>
         </div>
 
         <!-- ===== SECTION DOWNLOAD SURAT TTD DARI PEMOHON (DI BAWAH NAMA PEMOHON) ===== -->
@@ -420,7 +364,7 @@ try {
           <div class="surat-ttd-section">
             <h5>
               <i class="bi bi-file-earmark-check me-2"></i>
-              Surat yang Sudah Ditandatangani Pemohon
+              Surat Keterangan Difasilitasi dari Pemohon
             </h5>
             <p class="text-muted mb-3">
               Pemohon telah mengupload surat kelengkapan yang sudah ditandatangani. Silakan download untuk diproses lebih lanjut.
@@ -430,7 +374,7 @@ try {
                 <div class="d-flex align-items-center gap-3">
                   <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 2.5rem;"></i>
                   <div>
-                    <span class="fw-bold d-block">Surat Kelengkapan Ditandatangani</span>
+                    <span class="fw-bold d-block">Surat Berkas Difasilitasi</span>
                     <small class="text-muted">
                       <i class="bi bi-clock me-1"></i>
                       Diupload: <?php echo date('d/m/Y H:i', strtotime($suratTTD['tgl_upload'])); ?> WIB
@@ -443,11 +387,11 @@ try {
                   </div>
                 </div>
                 <div class="d-flex gap-2">
-                  <a href="<?php echo htmlspecialchars($suratTTD['file_path']); ?>"
-                    class="btn btn-outline-success"
-                    target="_blank">
-                    <i class="bi bi-eye me-2"></i>Preview
-                  </a>
+                  <button class="btn btn-sm btn-outline-success btn-view"
+                    data-src="<?php echo isset($suratTTD['file_path']) ? htmlspecialchars($suratTTD['file_path']) : ''; ?>"
+                    data-title="Surat Berkas Difasilitasi">
+                    <i class="bi bi-eye me-1"></i>Preview
+                  </button>
                   <a href="<?php echo htmlspecialchars($suratTTD['file_path']); ?>"
                     class="btn btn-success"
                     download>
@@ -462,10 +406,107 @@ try {
               </span>
             </div>
           </div>
+
+          <!-- ===== SECTION DOKUMEN YANG SUDAH DIUPLOAD ===== -->
+          <?php if (($suratKeterangan && file_exists($suratKeterangan['file_path'])) || ($buktiPendaftaran && file_exists($buktiPendaftaran['file_path']))): ?>
+            <div class="document-section mt-4">
+              <div class="document-title">
+                <i class="bi bi-file-earmark-check-fill me-2"></i>
+                Dokumen yang Sudah Diupload
+              </div>
+              <p class="text-muted mb-3">
+                Daftar dokumen yang telah berhasil diupload untuk pendaftaran ini.
+              </p>
+
+              <div class="row g-3">
+                <!-- Surat Keterangan IKM -->
+                <?php if ($suratKeterangan && file_exists($suratKeterangan['file_path'])): ?>
+                  <div class="col-md-6">
+                    <div class="card h-100 border-primary">
+                      <div class="card-body">
+                        <h6 class="fw-bold text-primary mb-3">
+                          <i class="bi bi-file-earmark-text me-2"></i>Surat Keterangan IKM
+                        </h6>
+                        <div class="file-info bg-white border-0 p-0">
+                          <div class="d-flex align-items-start gap-2 mb-3">
+                            <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 2rem;"></i>
+                            <div class="flex-grow-1">
+                              <span class="fw-semibold d-block">Surat Keterangan IKM</span>
+                              <small class="text-muted d-block">
+                                <i class="bi bi-clock me-1"></i>
+                                <?php echo date('d/m/Y H:i', strtotime($suratKeterangan['tgl_upload'])); ?> WIB
+                              </small>
+                              <small class="text-muted d-block">
+                                <i class="bi bi-file-earmark me-1"></i>
+                                <?php echo basename($suratKeterangan['file_path']); ?>
+                              </small>
+                            </div>
+                          </div>
+                          <div class="d-grid gap-2">
+                            <button class="btn btn-sm btn-outline-primary btn-view"
+                              data-src="<?php echo htmlspecialchars($suratKeterangan['file_path']); ?>"
+                              data-title="Surat Keterangan IKM">
+                              <i class="bi bi-eye me-1"></i>Preview
+                            </button>
+                            <a href="<?php echo htmlspecialchars($suratKeterangan['file_path']); ?>"
+                              class="btn btn-sm btn-primary"
+                              download>
+                              <i class="bi bi-download me-1"></i>Download
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                <?php endif; ?>
+
+                <!-- Bukti Pendaftaran -->
+                <?php if ($buktiPendaftaran && file_exists($buktiPendaftaran['file_path'])): ?>
+                  <div class="col-md-6">
+                    <div class="card h-100 border-success">
+                      <div class="card-body">
+                        <h6 class="fw-bold text-success mb-3">
+                          <i class="bi bi-file-earmark-check me-2"></i>Bukti Pendaftaran
+                        </h6>
+                        <div class="file-info bg-white border-0 p-0">
+                          <div class="d-flex align-items-start gap-2 mb-3">
+                            <i class="bi bi-file-earmark-pdf text-danger" style="font-size: 2rem;"></i>
+                            <div class="flex-grow-1">
+                              <span class="fw-semibold d-block">Bukti Pendaftaran</span>
+                              <small class="text-muted d-block">
+                                <i class="bi bi-clock me-1"></i>
+                                <?php echo date('d/m/Y H:i', strtotime($buktiPendaftaran['tgl_upload'])); ?> WIB
+                              </small>
+                              <small class="text-muted d-block">
+                                <i class="bi bi-file-earmark me-1"></i>
+                                <?php echo basename($buktiPendaftaran['file_path']); ?>
+                              </small>
+                            </div>
+                          </div>
+                          <div class="d-grid gap-2">
+                            <button class="btn btn-sm btn-outline-success btn-view"
+                              data-src="<?php echo htmlspecialchars($buktiPendaftaran['file_path']); ?>"
+                              data-title="Bukti Pendaftaran">
+                              <i class="bi bi-eye me-1"></i>Preview
+                            </button>
+                            <a href="<?php echo htmlspecialchars($buktiPendaftaran['file_path']); ?>"
+                              class="btn btn-sm btn-success"
+                              download>
+                              <i class="bi bi-download me-1"></i>Download
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                <?php endif; ?>
+              </div>
+            </div>
+          <?php endif; ?>
         <?php endif; ?>
 
         <fieldset class="review-box mt-3" id="reviewFieldset">
-          <legend>Cek Berkas</legend>
+          <legend>Berkas Baru Ditambahkan</legend>
           <div class="row g-2 align-items-center">
             <div class="col-12 col-lg-8">
               <div class="text-muted-600 small mb-2">
@@ -549,36 +590,17 @@ try {
               Upload Surat Keterangan IKM yang telah diproses untuk diberikan kepada pemohon.
             </p>
 
-            <?php if ($suratKeterangan && file_exists($suratKeterangan['file_path'])): ?>
-              <div class="file-info mb-3">
-                <div class="d-flex justify-content-between align-items-center">
-                  <div>
-                    <i class="bi bi-file-pdf text-danger me-2" style="font-size: 2rem;"></i>
-                    <span class="fw-bold">Surat Keterangan IKM</span>
-                    <br>
-                    <small class="text-muted">File sudah diupload</small>
-                  </div>
-                  <div class="d-flex gap-2">
-                    <a href="<?php echo htmlspecialchars($suratKeterangan['file_path']); ?>"
-                      class="btn btn-sm btn-outline-primary"
-                      target="_blank">
-                      <i class="bi bi-eye me-1"></i>Lihat
-                    </a>
-                  </div>
-                </div>
-              </div>
-            <?php endif; ?>
 
             <form id="formSuratKeterangan" enctype="multipart/form-data">
               <div class="upload-box">
                 <i class="bi bi-cloud-arrow-up text-primary mb-3" style="font-size: 3rem;"></i>
                 <h5>Pilih File Surat Keterangan IKM</h5>
-                <p class="text-muted">Format: PDF, JPG, JPEG, PNG (Max 10MB)</p>
+                <p class="text-muted">Format: PDF (Max 10MB)</p>
                 <input type="file"
                   class="form-control mt-3"
                   id="fileSuratKeterangan"
                   name="fileSuratKeterangan"
-                  accept=".pdf,.jpg,.jpeg,.png"
+                  accept=".pdf"
                   required>
                 <button type="submit" class="btn btn-dark mt-3" id="btnUploadSuratKeterangan">
                   <i class="bi bi-upload me-2"></i>Upload Surat Keterangan IKM
@@ -621,12 +643,12 @@ try {
               <div class="upload-box">
                 <i class="bi bi-cloud-arrow-up text-success mb-3" style="font-size: 3rem;"></i>
                 <h5>Pilih File Bukti Pendaftaran</h5>
-                <p class="text-muted">Format: PDF, JPG, JPEG, PNG (Max 10MB)</p>
+                <p class="text-muted">Format: PDF (Max 10MB)</p>
                 <input type="file"
                   class="form-control mt-3"
                   id="fileBuktiPendaftaran"
                   name="fileBuktiPendaftaran"
-                  accept=".pdf,.jpg,.jpeg,.png"
+                  accept=".pdf"
                   required>
                 <button type="submit" class="btn btn-success mt-3" id="btnUploadBuktiPendaftaran">
                   <i class="bi bi-upload me-2"></i>Upload Bukti Pendaftaran
@@ -742,7 +764,7 @@ try {
               </div>
               <div class="col-12">
                 <label class="form-label small">Omset per Bulan</label>
-                <input class="form-control" value="Rp <?php echo htmlspecialchars($data['omset_perbulan']); ?>" readonly />
+                <textarea class="form-control" readonly><?php echo htmlspecialchars($data['omset_perbulan']); ?></textarea>
               </div>
               <div class="col-12">
                 <label class="form-label small">Wilayah pemasaran</label>
@@ -778,13 +800,39 @@ try {
               <?php foreach ($lampiran['Nomor Induk Berusaha (NIB)'] as $item): ?>
                 <div class="mb-3">
                   <div class="small fw-semibold mb-2">Nomor Induk Berusaha (NIB)</div>
-                  <img class="attach-img" alt="Lampiran NIB" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
+                  <?php
+                  $file_ext = strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION));
+                  $is_pdf = ($file_ext === 'pdf');
+                  ?>
+
+                  <?php if ($is_pdf): ?>
+                    <div class="pdf-card" style="cursor: pointer;"
+                      onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;]').click()">
+                      <i class="bi bi-file-pdf-fill pdf-icon"></i>
+                      <div class="pdf-label">NIB Document (PDF)</div>
+                      <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">
+                        Klik untuk preview
+                      </small>
+                    </div>
+                  <?php else: ?>
+                    <img class="attach-img"
+                      alt="Lampiran NIB"
+                      src="<?php echo htmlspecialchars($item['file_path']); ?>"
+                      style="cursor: pointer;"
+                      onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;]').click()" />
+                  <?php endif; ?>
+
                   <div class="text-end mt-2 mb-3">
                     <button class="btn btn-dark btn-sm btn-view"
                       data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
                       data-title="Nomor Induk Berusaha (NIB)">
-                      <i class="bi bi-eye me-1"></i>View
+                      <i class="bi bi-eye me-1"></i>Preview
                     </button>
+                    <a href="<?php echo htmlspecialchars($item['file_path']); ?>"
+                      class="btn btn-outline-dark btn-sm"
+                      download>
+                      <i class="bi bi-download me-1"></i>Download
+                    </a>
                   </div>
                 </div>
               <?php endforeach; ?>
@@ -794,28 +842,47 @@ try {
               <div class="small fw-semibold mb-2">Legalitas/Standardisasi yang telah dimiliki</div>
               <div class="legalitas d-flex flex-wrap gap-2">
                 <?php foreach ($legalitas_array as $legal): ?>
-                  <button type="button" class="btn btn-sm muted-pill"><?php echo trim($legal); ?></button>
+                  <a type="button" style="padding: 2px 5px; border-radius: 50px; border: 1px solid #000; margin-bottom: 20px; cursor: default;"><?php echo trim($legal); ?></a>
                 <?php endforeach; ?>
-                </div>
+              </div>
+              <div class="row">
                 <?php if (isset($lampiran['P-IRT'])): ?>
-                  <div class="mb-3">
+                  <div class="col-md-6 mb-4">
                     <div class="small fw-semibold mb-2">Lampiran: P-IRT</div>
                     <div class="row g-3">
                       <?php foreach ($lampiran['P-IRT'] as $item): ?>
-                        <div class="col-4">
-                          <?php if (strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION)) === 'pdf'): ?>
-                            <div class="attach-img d-flex align-items-center justify-content-center bg-light border" style="height: 150px;">
-                              <i class="bi bi-file-pdf text-danger" style="font-size: 3rem;"></i>
+                        <div class="col-12">
+                          <?php
+                          $file_ext = strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION));
+                          $is_pdf = ($file_ext === 'pdf');
+                          ?>
+
+                          <?php if ($is_pdf): ?>
+                            <div class="pdf-card" style="cursor: pointer;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;P-IRT&quot;]').click()">
+                              <i class="bi bi-file-pdf-fill pdf-icon"></i>
+                              <div class="pdf-label">P-IRT Document</div>
+                              <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
-                            <img class="attach-img" alt="P-IRT" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
+                            <img class="attach-img"
+                              alt="P-IRT"
+                              src="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              style="cursor: pointer; width: 100%; height: auto;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;P-IRT&quot;]').click()" />
                           <?php endif; ?>
+
                           <div class="text-end mt-2 mb-3">
                             <button class="btn btn-dark btn-sm btn-view"
                               data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
                               data-title="P-IRT">
-                              <i class="bi bi-eye me-1"></i>View
+                              <i class="bi bi-eye me-1"></i>Preview
                             </button>
+                            <a href="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              class="btn btn-outline-dark btn-sm"
+                              download>
+                              <i class="bi bi-download me-1"></i>
+                            </a>
                           </div>
                         </div>
                       <?php endforeach; ?>
@@ -824,24 +891,42 @@ try {
                 <?php endif; ?>
 
                 <?php if (isset($lampiran['BPOM-MD'])): ?>
-                  <div class="mb-3">
+                  <div class="col-md-6 mb-4">
                     <div class="small fw-semibold mb-2">Lampiran: BPOM-MD</div>
                     <div class="row g-3">
                       <?php foreach ($lampiran['BPOM-MD'] as $item): ?>
-                        <div class="col-4">
-                          <?php if (strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION)) === 'pdf'): ?>
-                            <div class="attach-img d-flex align-items-center justify-content-center bg-light border" style="height: 150px;">
-                              <i class="bi bi-file-pdf text-danger" style="font-size: 3rem;"></i>
+                        <div class="col-12">
+                          <?php
+                          $file_ext = strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION));
+                          $is_pdf = ($file_ext === 'pdf');
+                          ?>
+
+                          <?php if ($is_pdf): ?>
+                            <div class="pdf-card" style="cursor: pointer;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;BPOM-MD&quot;]').click()">
+                              <i class="bi bi-file-pdf-fill pdf-icon"></i>
+                              <div class="pdf-label">BPOM-MD Document</div>
+                              <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
-                            <img class="attach-img" alt="BPOM-MD" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
+                            <img class="attach-img"
+                              alt="BPOM-MD"
+                              src="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              style="cursor: pointer; width: 100%; height: auto;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;BPOM-MD&quot;]').click()" />
                           <?php endif; ?>
+
                           <div class="text-end mt-2 mb-3">
                             <button class="btn btn-dark btn-sm btn-view"
                               data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
                               data-title="BPOM-MD">
-                              <i class="bi bi-eye me-1"></i>View
+                              <i class="bi bi-eye me-1"></i>Preview
                             </button>
+                            <a href="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              class="btn btn-outline-dark btn-sm"
+                              download>
+                              <i class="bi bi-download me-1"></i>
+                            </a>
                           </div>
                         </div>
                       <?php endforeach; ?>
@@ -850,24 +935,42 @@ try {
                 <?php endif; ?>
 
                 <?php if (isset($lampiran['HALAL'])): ?>
-                  <div class="mb-3">
+                  <div class="col-md-6 mb-4">
                     <div class="small fw-semibold mb-2">Lampiran: HALAL</div>
                     <div class="row g-3">
                       <?php foreach ($lampiran['HALAL'] as $item): ?>
-                        <div class="col-4">
-                          <?php if (strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION)) === 'pdf'): ?>
-                            <div class="attach-img d-flex align-items-center justify-content-center bg-light border" style="height: 150px;">
-                              <i class="bi bi-file-pdf text-danger" style="font-size: 3rem;"></i>
+                        <div class="col-12">
+                          <?php
+                          $file_ext = strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION));
+                          $is_pdf = ($file_ext === 'pdf');
+                          ?>
+
+                          <?php if ($is_pdf): ?>
+                            <div class="pdf-card" style="cursor: pointer;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;HALAL&quot;]').click()">
+                              <i class="bi bi-file-pdf-fill pdf-icon"></i>
+                              <div class="pdf-label">HALAL Certificate</div>
+                              <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
-                            <img class="attach-img" alt="HALAL" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
+                            <img class="attach-img"
+                              alt="HALAL"
+                              src="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              style="cursor: pointer; width: 100%; height: auto;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;HALAL&quot;]').click()" />
                           <?php endif; ?>
+
                           <div class="text-end mt-2 mb-3">
                             <button class="btn btn-dark btn-sm btn-view"
                               data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
                               data-title="HALAL">
-                              <i class="bi bi-eye me-1"></i>View
+                              <i class="bi bi-eye me-1"></i>Preview
                             </button>
+                            <a href="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              class="btn btn-outline-dark btn-sm"
+                              download>
+                              <i class="bi bi-download me-1"></i>
+                            </a>
                           </div>
                         </div>
                       <?php endforeach; ?>
@@ -876,24 +979,42 @@ try {
                 <?php endif; ?>
 
                 <?php if (isset($lampiran['NUTRITION FACTS'])): ?>
-                  <div class="mb-3">
+                  <div class="col-md-6 mb-4">
                     <div class="small fw-semibold mb-2">Lampiran: NUTRITION FACTS</div>
                     <div class="row g-3">
                       <?php foreach ($lampiran['NUTRITION FACTS'] as $item): ?>
-                        <div class="col-4">
-                          <?php if (strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION)) === 'pdf'): ?>
-                            <div class="attach-img d-flex align-items-center justify-content-center bg-light border" style="height: 150px;">
-                              <i class="bi bi-file-pdf text-danger" style="font-size: 3rem;"></i>
+                        <div class="col-12">
+                          <?php
+                          $file_ext = strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION));
+                          $is_pdf = ($file_ext === 'pdf');
+                          ?>
+
+                          <?php if ($is_pdf): ?>
+                            <div class="pdf-card" style="cursor: pointer;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;NUTRITION FACTS&quot;]').click()">
+                              <i class="bi bi-file-pdf-fill pdf-icon"></i>
+                              <div class="pdf-label">Nutrition Facts</div>
+                              <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
-                            <img class="attach-img" alt="NUTRITION FACTS" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
+                            <img class="attach-img"
+                              alt="NUTRITION FACTS"
+                              src="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              style="cursor: pointer; width: 100%; height: auto;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;NUTRITION FACTS&quot;]').click()" />
                           <?php endif; ?>
+
                           <div class="text-end mt-2 mb-3">
                             <button class="btn btn-dark btn-sm btn-view"
                               data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
                               data-title="NUTRITION FACTS">
-                              <i class="bi bi-eye me-1"></i>View
+                              <i class="bi bi-eye me-1"></i>Preview
                             </button>
+                            <a href="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              class="btn btn-outline-dark btn-sm"
+                              download>
+                              <i class="bi bi-download me-1"></i>
+                            </a>
                           </div>
                         </div>
                       <?php endforeach; ?>
@@ -902,24 +1023,42 @@ try {
                 <?php endif; ?>
 
                 <?php if (isset($lampiran['SNI'])): ?>
-                  <div class="mb-3">
+                  <div class="col-md-6 mb-4">
                     <div class="small fw-semibold mb-2">Lampiran: SNI</div>
                     <div class="row g-3">
                       <?php foreach ($lampiran['SNI'] as $item): ?>
-                        <div class="col-4">
-                          <?php if (strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION)) === 'pdf'): ?>
-                            <div class="attach-img d-flex align-items-center justify-content-center bg-light border" style="height: 150px;">
-                              <i class="bi bi-file-pdf text-danger" style="font-size: 3rem;"></i>
+                        <div class="col-12">
+                          <?php
+                          $file_ext = strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION));
+                          $is_pdf = ($file_ext === 'pdf');
+                          ?>
+
+                          <?php if ($is_pdf): ?>
+                            <div class="pdf-card" style="cursor: pointer;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;SNI&quot;]').click()">
+                              <i class="bi bi-file-pdf-fill pdf-icon"></i>
+                              <div class="pdf-label">SNI Certificate</div>
+                              <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
-                            <img class="attach-img" alt="SNI" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
+                            <img class="attach-img"
+                              alt="SNI"
+                              src="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              style="cursor: pointer; width: 100%; height: auto;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;SNI&quot;]').click()" />
                           <?php endif; ?>
+
                           <div class="text-end mt-2 mb-3">
                             <button class="btn btn-dark btn-sm btn-view"
                               data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
                               data-title="SNI">
-                              <i class="bi bi-eye me-1"></i>View
+                              <i class="bi bi-eye me-1"></i>Preview
                             </button>
+                            <a href="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              class="btn btn-outline-dark btn-sm"
+                              download>
+                              <i class="bi bi-download me-1"></i>
+                            </a>
                           </div>
                         </div>
                       <?php endforeach; ?>
@@ -928,75 +1067,93 @@ try {
                 <?php endif; ?>
 
                 <?php if (isset($lampiran['Legalitas Lainnya'])): ?>
-                  <div class="mb-3">
+                  <div class="col-md-6 mb-4">
                     <div class="small fw-semibold mb-2">Lampiran: Legalitas Lainnya</div>
                     <div class="row g-3">
                       <?php foreach ($lampiran['Legalitas Lainnya'] as $item): ?>
-                        <div class="col-4">
-                          <?php if (strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION)) === 'pdf'): ?>
-                            <div class="attach-img d-flex align-items-center justify-content-center bg-light border" style="height: 150px;">
-                              <i class="bi bi-file-pdf text-danger" style="font-size: 3rem;"></i>
+                        <div class="col-12">
+                          <?php
+                          $file_ext = strtolower(pathinfo($item['file_path'], PATHINFO_EXTENSION));
+                          $is_pdf = ($file_ext === 'pdf');
+                          ?>
+
+                          <?php if ($is_pdf): ?>
+                            <div class="pdf-card" style="cursor: pointer;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;Legalitas Lainnya&quot;]').click()">
+                              <i class="bi bi-file-pdf-fill pdf-icon"></i>
+                              <div class="pdf-label">Document (PDF)</div>
+                              <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
-                            <img class="attach-img" alt="Legalitas Lainnya" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
+                            <img class="attach-img"
+                              alt="Legalitas Lainnya"
+                              src="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              style="cursor: pointer; width: 100%; height: auto;"
+                              onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;Legalitas Lainnya&quot;]').click()" />
                           <?php endif; ?>
+
                           <div class="text-end mt-2 mb-3">
                             <button class="btn btn-dark btn-sm btn-view"
                               data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
                               data-title="Legalitas Lainnya">
-                              <i class="bi bi-eye me-1"></i>View
+                              <i class="bi bi-eye me-1"></i>Preview
                             </button>
+                            <a href="<?php echo htmlspecialchars($item['file_path']); ?>"
+                              class="btn btn-outline-dark btn-sm"
+                              download>
+                              <i class="bi bi-download me-1"></i>
+                            </a>
                           </div>
                         </div>
                       <?php endforeach; ?>
                     </div>
                   </div>
                 <?php endif; ?>
+              </div>
+
+              <?php if (isset($lampiran['Foto Produk'])): ?>
+                <div class="mb-3">
+                  <div class="small fw-semibold mb-2">Lampiran: Foto Produk</div>
+                  <div class="row g-3">
+                    <?php foreach ($lampiran['Foto Produk'] as $item): ?>
+                      <div class="col-4">
+                        <img class="attach-img" alt="Foto Produk" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
+                        <div class="text-end mt-2 mb-3">
+                          <button class="btn btn-dark btn-sm btn-view"
+                            data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
+                            data-title="Foto Produk">
+                            <i class="bi bi-eye me-1"></i>View
+                          </button>
+                        </div>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                </div>
+              <?php endif; ?>
+
+              <?php if (isset($lampiran['Foto Proses Produksi'])): ?>
+                <div class="mb-2">
+                  <div class="small fw-semibold mb-2">Lampiran: Foto Proses Produksi</div>
+                  <div class="row g-3">
+                    <?php foreach ($lampiran['Foto Proses Produksi'] as $item): ?>
+                      <div class="col-6">
+                        <img class="attach-img" alt="Proses Produksi" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
+                        <div class="text-end mt-2 mb-3">
+                          <button class="btn btn-dark btn-sm btn-view"
+                            data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
+                            data-title="Foto Proses Produksi">
+                            <i class="bi bi-eye me-1"></i>View
+                          </button>
+                        </div>
+                      </div>
+                    <?php endforeach; ?>
+                  </div>
+                </div>
+              <?php endif; ?>
             </div>
-
-            <?php if (isset($lampiran['Foto Produk'])): ?>
-              <div class="mb-3">
-                <div class="small fw-semibold mb-2">Lampiran: Foto Produk</div>
-                <div class="row g-3">
-                  <?php foreach ($lampiran['Foto Produk'] as $item): ?>
-                    <div class="col-4">
-                      <img class="attach-img" alt="Foto Produk" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
-                      <div class="text-end mt-2 mb-3">
-                        <button class="btn btn-dark btn-sm btn-view"
-                          data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
-                          data-title="Foto Produk">
-                          <i class="bi bi-eye me-1"></i>View
-                        </button>
-                      </div>
-                    </div>
-                  <?php endforeach; ?>
-                </div>
-              </div>
-            <?php endif; ?>
-
-            <?php if (isset($lampiran['Foto Proses Produksi'])): ?>
-              <div class="mb-2">
-                <div class="small fw-semibold mb-2">Lampiran: Foto Proses Produksi</div>
-                <div class="row g-3">
-                  <?php foreach ($lampiran['Foto Proses Produksi'] as $item): ?>
-                    <div class="col-6">
-                      <img class="attach-img" alt="Proses Produksi" src="<?php echo htmlspecialchars($item['file_path']); ?>" />
-                      <div class="text-end mt-2 mb-3">
-                        <button class="btn btn-dark btn-sm btn-view"
-                          data-src="<?php echo htmlspecialchars($item['file_path']); ?>"
-                          data-title="Foto Proses Produksi">
-                          <i class="bi bi-eye me-1"></i>View
-                        </button>
-                      </div>
-                    </div>
-                  <?php endforeach; ?>
-                </div>
-              </div>
-            <?php endif; ?>
           </div>
         </div>
       </div>
-
       <!-- INFORMASI MEREK -->
       <div class="card mt-4">
         <div class="card-body p-3 p-md-4">
@@ -1074,19 +1231,29 @@ try {
     </div>
   </main>
 
-  <!-- Modal View Foto -->
+  <!-- Modal View Foto/PDF -->
   <div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content bg-white border-0">
-        <div class="modal-body text-center position-relative">
-          <button type="button" class="btn-close btn-close-dark position-absolute top-0 end-0 m-3" data-bs-dismiss="modal"></button>
-          <h6 class="text-dark mb-3" id="modalTitle"></h6>
-          <img id="modalImage" src="" alt="Preview" class="img-fluid rounded mb-3" />
-          <div>
-            <a id="downloadBtn" href="#" download class="btn btn-success">
-              <i class="bi bi-download me-1"></i>Download
-            </a>
+      <div class="modal-content">
+        <div class="modal-header py-2 bg-light">
+          <h6 class="modal-title mb-0" id="modalTitle"></h6>
+          <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-3">
+          <!-- Container untuk gambar -->
+          <div id="imageContainer" style="display: none;">
+            <img id="modalImage" src="" alt="Preview" class="img-fluid rounded" style="max-height: 50vh; width: 100%; object-fit: contain;" />
           </div>
+
+          <!-- Container untuk PDF -->
+          <div id="pdfContainer" style="display: none;">
+            <iframe id="modalPdf" src="" style="width: 100%; height: 50vh; border: 1px solid #dee2e6; border-radius: 0.375rem;"></iframe>
+          </div>
+        </div>
+        <div class="modal-footer py-2 bg-light">
+          <a id="downloadBtn" href="#" download class="btn btn-success btn-sm">
+            <i class="bi bi-download me-1"></i>Download
+          </a>
         </div>
       </div>
     </div>
@@ -1114,29 +1281,123 @@ try {
     // ===== HANDLER UPLOAD SURAT KETERANGAN IKM =====
     const formSuratKeterangan = document.getElementById('formSuratKeterangan');
     if (formSuratKeterangan) {
-      formSuratKeterangan.addEventListener('submit', function(e) {
-        e.preventDefault();
+      const fileInput = document.getElementById('fileSuratKeterangan');
+      const btnUpload = document.getElementById('btnUploadSuratKeterangan');
 
-        const fileInput = document.getElementById('fileSuratKeterangan');
-        const btnUpload = document.getElementById('btnUploadSuratKeterangan');
+      // Cek apakah sudah pernah upload (dari PHP)
+      const sudahUpload = <?php echo ($suratKeterangan && file_exists($suratKeterangan['file_path'])) ? 'true' : 'false'; ?>;
 
-        if (!fileInput.files[0]) {
-          alert('Silakan pilih file terlebih dahulu!');
-          return;
-        }
+      if (sudahUpload) {
+        fileInput.disabled = true;
+        btnUpload.disabled = true;
+        btnUpload.innerHTML = '<i class="bi bi-check-circle me-2"></i>Sudah Diupload';
+        btnUpload.classList.remove('btn-dark');
+        btnUpload.classList.add('btn-success');
+      }
 
-        if (fileInput.files[0].size > 10 * 1024 * 1024) {
+      // Event ketika file dipilih - langsung tampilkan preview
+      fileInput.addEventListener('change', function() {
+        const file = this.files[0];
+
+        if (!file) return;
+
+        // Validasi ukuran
+        if (file.size > 10 * 1024 * 1024) {
           alert('Ukuran file maksimal 10MB!');
+          this.value = '';
           return;
         }
 
+        // Validasi format
+        const allowedExt = ['pdf'];
+        const fileExt = file.name.split('.').pop().toLowerCase();
+
+        if (!allowedExt.includes(fileExt)) {
+          alert('Format file harus PDF');
+          this.value = '';
+          return;
+        }
+
+        // Tampilkan modal preview
+        showPreviewModal(file);
+      });
+
+      function showPreviewModal(file) {
+        const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+        const modalTitle = document.getElementById('modalTitle');
+        const imageContainer = document.getElementById('imageContainer');
+        const pdfContainer = document.getElementById('pdfContainer');
+        const modalImg = document.getElementById('modalImage');
+        const modalPdf = document.getElementById('modalPdf');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        modalTitle.textContent = 'Preview: Surat Keterangan IKM';
+
+        const fileExt = file.name.split('.').pop().toLowerCase();
+        const fileURL = URL.createObjectURL(file);
+
+        if (fileExt === 'pdf') {
+          // Preview PDF
+          imageContainer.style.display = 'none';
+          pdfContainer.style.display = 'block';
+          modalPdf.src = fileURL + '#toolbar=0';
+        } else {
+          // Preview gambar
+          pdfContainer.style.display = 'none';
+          imageContainer.style.display = 'block';
+          modalImg.src = fileURL;
+        }
+
+        // Ganti tombol download dengan tombol konfirmasi upload
+        downloadBtn.outerHTML = `
+      <button id="btnKonfirmasiUploadIKM" class="btn btn-dark btn-sm">
+        <i class="bi bi-upload me-2"></i>Konfirmasi & Upload
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+        <i class="bi bi-x me-1"></i>Batal
+      </button>
+    `;
+
+        modal.show();
+
+        // Handler konfirmasi upload
+        document.getElementById('btnKonfirmasiUploadIKM').addEventListener('click', function() {
+          modal.hide();
+          uploadSuratIKM(file);
+
+          // Cleanup URL object
+          URL.revokeObjectURL(fileURL);
+        });
+
+        // Cleanup saat modal ditutup
+        document.getElementById('imageModal').addEventListener('hidden.bs.modal', function() {
+          URL.revokeObjectURL(fileURL);
+          modalPdf.src = '';
+          modalImg.src = '';
+
+          // Kembalikan tombol download
+          const btnConfirm = document.getElementById('btnKonfirmasiUploadIKM');
+          if (btnConfirm && btnConfirm.parentElement) {
+            btnConfirm.parentElement.innerHTML = `
+          <a id="downloadBtn" href="#" download class="btn btn-success btn-sm">
+            <i class="bi bi-download me-1"></i>Download
+          </a>
+        `;
+          }
+        }, {
+          once: true
+        });
+      }
+
+      function uploadSuratIKM(file) {
         if (!confirm('Apakah Anda yakin ingin mengupload Surat Keterangan IKM ini?')) {
+          fileInput.value = '';
           return;
         }
 
         const formData = new FormData();
         formData.append('ajax_action', 'upload_surat_keterangan');
-        formData.append('fileSuratKeterangan', fileInput.files[0]);
+        formData.append('fileSuratKeterangan', file);
 
         btnUpload.disabled = true;
         btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Mengupload...';
@@ -1149,9 +1410,19 @@ try {
           .then(data => {
             if (data.success) {
               alert('Surat Keterangan IKM berhasil diupload!');
-              location.reload();
+
+              // Disable input dan ubah tombol
+              fileInput.disabled = true;
+              btnUpload.disabled = true;
+              btnUpload.innerHTML = '<i class="bi bi-check-circle me-2"></i>Sudah Diupload';
+              btnUpload.classList.remove('btn-dark');
+              btnUpload.classList.add('btn-success');
+
+              // Reload setelah 1 detik
+              setTimeout(() => location.reload(), 1000);
             } else {
               alert('Gagal: ' + data.message);
+              fileInput.value = '';
               btnUpload.disabled = false;
               btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Keterangan IKM';
             }
@@ -1159,41 +1430,148 @@ try {
           .catch(error => {
             console.error('Error:', error);
             alert('Terjadi kesalahan saat mengupload file.');
+            fileInput.value = '';
             btnUpload.disabled = false;
             btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Keterangan IKM';
           });
+      }
+
+      // Event submit form (backup jika ada yang langsung submit)
+      formSuratKeterangan.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const file = fileInput.files[0];
+        if (file) {
+          uploadSuratIKM(file);
+        } else {
+          alert('Silakan pilih file terlebih dahulu!');
+        }
       });
     }
 
     // ===== HANDLER UPLOAD BUKTI PENDAFTARAN =====
     const formBuktiPendaftaran = document.getElementById('formBuktiPendaftaran');
     if (formBuktiPendaftaran) {
-      formBuktiPendaftaran.addEventListener('submit', function(e) {
-        e.preventDefault();
+      const fileInputBukti = document.getElementById('fileBuktiPendaftaran');
+      const btnUploadBukti = document.getElementById('btnUploadBuktiPendaftaran');
 
-        const fileInput = document.getElementById('fileBuktiPendaftaran');
-        const btnUpload = document.getElementById('btnUploadBuktiPendaftaran');
+      // Cek apakah sudah pernah upload (dari PHP)
+      const sudahUploadBukti = <?php echo ($buktiPendaftaran && file_exists($buktiPendaftaran['file_path'])) ? 'true' : 'false'; ?>;
 
-        if (!fileInput.files[0]) {
-          alert('Silakan pilih file terlebih dahulu!');
-          return;
-        }
+      if (sudahUploadBukti) {
+        fileInputBukti.disabled = true;
+        btnUploadBukti.disabled = true;
+        btnUploadBukti.innerHTML = '<i class="bi bi-check-circle me-2"></i>Sudah Diupload';
+        btnUploadBukti.classList.remove('btn-success');
+        btnUploadBukti.classList.add('btn-outline-success');
+      }
 
-        if (fileInput.files[0].size > 10 * 1024 * 1024) {
+      // Event ketika file dipilih - langsung tampilkan preview
+      fileInputBukti.addEventListener('change', function() {
+        const file = this.files[0];
+
+        if (!file) return;
+
+        // Validasi ukuran
+        if (file.size > 10 * 1024 * 1024) {
           alert('Ukuran file maksimal 10MB!');
+          this.value = '';
           return;
         }
 
-        if (!confirm('Apakah Anda yakin ingin mengupload Bukti Pendaftaran ini? Status akan otomatis berubah menjadi "Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian".')) {
+        // Validasi format
+        const allowedExt = ['pdf'];
+        const fileExt = file.name.split('.').pop().toLowerCase();
+
+        if (!allowedExt.includes(fileExt)) {
+          alert('Format file harus PDF');
+          this.value = '';
+          return;
+        }
+
+        // Tampilkan modal preview
+        showPreviewModalBukti(file);
+      });
+
+      function showPreviewModalBukti(file) {
+        const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+        const modalTitle = document.getElementById('modalTitle');
+        const imageContainer = document.getElementById('imageContainer');
+        const pdfContainer = document.getElementById('pdfContainer');
+        const modalImg = document.getElementById('modalImage');
+        const modalPdf = document.getElementById('modalPdf');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        modalTitle.textContent = 'Preview: Bukti Pendaftaran';
+
+        const fileExt = file.name.split('.').pop().toLowerCase();
+        const fileURL = URL.createObjectURL(file);
+
+        if (fileExt === 'pdf') {
+          // Preview PDF
+          imageContainer.style.display = 'none';
+          pdfContainer.style.display = 'block';
+          modalPdf.src = fileURL + '#toolbar=0';
+        } else {
+          // Preview gambar
+          pdfContainer.style.display = 'none';
+          imageContainer.style.display = 'block';
+          modalImg.src = fileURL;
+        }
+
+        // Ganti tombol download dengan tombol konfirmasi upload
+        downloadBtn.outerHTML = `
+      <button id="btnKonfirmasiUploadBukti" class="btn btn-success btn-sm">
+        <i class="bi bi-upload me-2"></i>Konfirmasi & Upload
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+        <i class="bi bi-x me-1"></i>Batal
+      </button>
+    `;
+
+        modal.show();
+
+        // Handler konfirmasi upload
+        document.getElementById('btnKonfirmasiUploadBukti').addEventListener('click', function() {
+          modal.hide();
+          uploadBuktiPendaftaran(file);
+
+          // Cleanup URL object
+          URL.revokeObjectURL(fileURL);
+        });
+
+        // Cleanup saat modal ditutup
+        document.getElementById('imageModal').addEventListener('hidden.bs.modal', function() {
+          URL.revokeObjectURL(fileURL);
+          modalPdf.src = '';
+          modalImg.src = '';
+
+          // Kembalikan tombol download
+          const btnConfirm = document.getElementById('btnKonfirmasiUploadBukti');
+          if (btnConfirm && btnConfirm.parentElement) {
+            btnConfirm.parentElement.innerHTML = `
+          <a id="downloadBtn" href="#" download class="btn btn-success btn-sm">
+            <i class="bi bi-download me-1"></i>Download
+          </a>
+        `;
+          }
+        }, {
+          once: true
+        });
+      }
+
+      function uploadBuktiPendaftaran(file) {
+        if (!confirm('Apakah Anda yakin ingin mengupload Bukti Pendaftaran ini?\n\nStatus akan otomatis berubah menjadi "Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian".')) {
+          fileInputBukti.value = '';
           return;
         }
 
         const formData = new FormData();
         formData.append('ajax_action', 'upload_bukti_pendaftaran');
-        formData.append('fileBuktiPendaftaran', fileInput.files[0]);
+        formData.append('fileBuktiPendaftaran', file);
 
-        btnUpload.disabled = true;
-        btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Mengupload...';
+        btnUploadBukti.disabled = true;
+        btnUploadBukti.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Mengupload...';
 
         fetch(window.location.href, {
             method: 'POST',
@@ -1203,19 +1581,42 @@ try {
           .then(data => {
             if (data.success) {
               alert('Bukti Pendaftaran berhasil diupload dan status diperbarui ke "Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian"!');
-              location.reload();
+
+              // Disable input dan ubah tombol
+              fileInputBukti.disabled = true;
+              btnUploadBukti.disabled = true;
+              btnUploadBukti.innerHTML = '<i class="bi bi-check-circle me-2"></i>Sudah Diupload';
+              btnUploadBukti.classList.remove('btn-success');
+              btnUploadBukti.classList.add('btn-outline-success');
+
+              // Reload setelah 1 detik
+              setTimeout(() => location.reload(), 1000);
             } else {
               alert('Gagal: ' + data.message);
-              btnUpload.disabled = false;
-              btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Bukti Pendaftaran';
+              fileInputBukti.value = '';
+              btnUploadBukti.disabled = false;
+              btnUploadBukti.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Bukti Pendaftaran';
             }
           })
           .catch(error => {
             console.error('Error:', error);
             alert('Terjadi kesalahan saat mengupload file.');
-            btnUpload.disabled = false;
-            btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Bukti Pendaftaran';
+            fileInputBukti.value = '';
+            btnUploadBukti.disabled = false;
+            btnUploadBukti.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Bukti Pendaftaran';
           });
+      }
+
+      // Event submit form (backup jika ada yang langsung submit)
+      formBuktiPendaftaran.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const file = fileInputBukti.files[0];
+        if (file) {
+          uploadBuktiPendaftaran(file);
+        } else {
+          alert('Silakan pilih file terlebih dahulu!');
+        }
       });
     }
 
@@ -1289,22 +1690,63 @@ try {
       });
     }
 
-    // View image modal
+    // View image/pdf modal
     document.querySelectorAll('.btn-view').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const src = btn.getAttribute('data-src');
-        const title = btn.getAttribute('data-title');
-        const modalImg = document.getElementById('modalImage');
+      btn.addEventListener('click', function() {
+        const src = this.getAttribute('data-src');
+        const title = this.getAttribute('data-title');
+
         const modalTitle = document.getElementById('modalTitle');
         const downloadBtn = document.getElementById('downloadBtn');
+        const imageContainer = document.getElementById('imageContainer');
+        const pdfContainer = document.getElementById('pdfContainer');
+        const modalImg = document.getElementById('modalImage');
+        const modalPdf = document.getElementById('modalPdf');
 
-        modalImg.src = src;
         modalTitle.textContent = title;
         downloadBtn.href = src;
 
+        // Cek ekstensi file
+        const fileExtension = src.split('.').pop().toLowerCase();
+
+        if (fileExtension === 'pdf') {
+          // Tampilkan PDF
+          imageContainer.style.display = 'none';
+          pdfContainer.style.display = 'block';
+          modalPdf.src = src + '#toolbar=0'; // Hide PDF toolbar
+        } else {
+          // Tampilkan gambar
+          pdfContainer.style.display = 'none';
+          imageContainer.style.display = 'block';
+          modalImg.src = src;
+        }
+
+        // Buka modal
         const modal = new bootstrap.Modal(document.getElementById('imageModal'));
         modal.show();
       });
+    });
+
+    // Bersihkan saat modal ditutup
+    const imageModal = document.getElementById('imageModal');
+    imageModal.addEventListener('hidden.bs.modal', function() {
+      document.getElementById('modalPdf').src = '';
+      document.getElementById('modalImage').src = '';
+    });
+
+    // Force z-index saat modal terbuka
+    imageModal.addEventListener('show.bs.modal', function() {
+      this.style.zIndex = '1055';
+      setTimeout(() => {
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (backdrop) backdrop.style.zIndex = '1050';
+      }, 50);
+    });
+
+    // Bersihkan iframe saat modal ditutup
+    document.getElementById('imageModal').addEventListener('hidden.bs.modal', function() {
+      document.getElementById('modalPdf').src = '';
+      document.getElementById('modalImage').src = '';
     });
 
     function setStatus(text) {
@@ -1313,7 +1755,7 @@ try {
         btn.textContent = text;
         btn.className = 'btn btn-pill fw-semibold';
 
-        if (text === 'Pengecekan Berkas') {
+        if (text === 'Pengecekan Berkas' || text === 'Berkas Baru') {
           btn.classList.add('btn-secondary');
         } else if (text === 'Konfirmasi Lanjut') {
           btn.classList.add('btn-primary');
@@ -1474,7 +1916,7 @@ try {
           Tekan pilih file, lalu kirim.
         </div>
         <div class="d-flex flex-column flex-sm-row align-items-start gap-2">
-          <input id="fileBukti" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" />
+          <input id="fileBukti" type="file" class="form-control" accept=".pdf" />
           <button id="btnKirimBukti" type="button" class="btn btn-dark btn-pill">Kirim</button>
         </div>
       `;
@@ -1534,7 +1976,7 @@ try {
           Silahkan pilih file, dan tekan kirim.
         </div>
         <div class="d-flex flex-column flex-sm-row align-items-start gap-2">
-          <input id="fileHasil" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" />
+          <input id="fileHasil" type="file" class="form-control" accept=".pdf" />
           <button id="btnKirimHasil" type="button" class="btn btn-dark btn-pill">Kirim</button>
         </div>
       `;
@@ -1615,11 +2057,6 @@ try {
       </div>
       <div class="d-grid gap-2">
         <a href="${sertifikatData.file_path}" 
-           class="btn btn-outline-success" 
-           target="_blank">
-          <i class="bi bi-eye me-2"></i>Preview Sertifikat
-        </a>
-        <a href="${sertifikatData.file_path}" 
            class="btn btn-success" 
            download>
           <i class="bi bi-download me-2"></i>Download Sertifikat
@@ -1656,11 +2093,6 @@ try {
         </p>
       </div>
       <div class="d-grid gap-2">
-        <a href="${penolakanData.file_path}" 
-           class="btn btn-outline-danger" 
-           target="_blank">
-          <i class="bi bi-eye me-2"></i>Preview Surat Penolakan
-        </a>
         <a href="${penolakanData.file_path}" 
            class="btn btn-danger" 
            download>
@@ -1714,13 +2146,141 @@ try {
         </div>
       </div>
     </div>
-    
-    <div class="alert alert-success mt-3 mb-0">
-      <i class="bi bi-check-circle me-2"></i>
-      <strong>Informasi:</strong> Masa berlaku sertifikat merek adalah <strong>10 tahun</strong> sejak tanggal penerbitan.
+       ${generateInfoAlert()}
+  `;
+    }
+
+    // Fungsi untuk generate alert informasi berdasarkan file yang tersedia
+    function generateInfoAlert() {
+      const sertifikatData = <?php echo json_encode($sertifikatMerek); ?>;
+      const penolakanData = <?php echo json_encode($suratPenolakan); ?>;
+
+      if (sertifikatData && sertifikatData.file_path && sertifikatData.tgl_upload) {
+        const uploadDate = new Date(sertifikatData.tgl_upload);
+        const expiryDate = new Date(uploadDate);
+        expiryDate.setFullYear(expiryDate.getFullYear() + 10);
+        expiryDate.setHours(23, 59, 59, 999); // Set ke akhir hari (23:59:59)
+
+        const expiryFormatted = expiryDate.toLocaleDateString('id-ID', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric'
+        });
+
+        const countdownId = 'countdown-timer';
+        setTimeout(() => updateCountdown(expiryDate, countdownId), 100);
+
+        return `
+      <div class="alert alert-success mt-3 mb-0" id="alert-sertifikat">
+        <i class="bi bi-check-circle me-2"></i>
+        <strong>Informasi:</strong> Sertifikat merek masih berlaku hingga 
+        <strong>${expiryFormatted}</strong>.
+        <br>
+        <small class="mt-2 d-block">
+          Sisa waktu berlaku: <strong id="${countdownId}">Menghitung...</strong>
+        </small>
+      </div>
+    `;
+      }
+
+      if (penolakanData && penolakanData.file_path) {
+        return `
+      <div class="alert alert-info mt-3 mb-0">
+        <i class="bi bi-info-circle me-2"></i>
+        <strong>Informasi:</strong> Terima kasih telah melakukan proses pendaftaran merek. 
+        <br><small class="mt-2 d-block">Surat penolakan dan informasi akan dikirimkan ke Pemohon.</small>
+      </div>
+    `;
+      }
+
+      return `
+    <div class="alert alert-secondary mt-3 mb-0">
+      <i class="bi bi-hourglass-split me-2"></i>
+      <strong>Status:</strong> Menunggu hasil verifikasi dari kementerian.
     </div>
   `;
     }
+
+
+    // 🔁 Fungsi update countdown (detik berjalan, hitung ke jam 00.00)
+    function updateCountdown(expiryDate, elementId) {
+      const countdownEl = document.getElementById(elementId);
+      if (!countdownEl) return;
+
+      const alertEl = document.getElementById("alert-sertifikat");
+
+      function calcRemaining() {
+        const now = new Date();
+        const distance = expiryDate - now;
+
+        if (distance < 0) {
+          countdownEl.innerHTML = "Masa berlaku sertifikat telah berakhir";
+          alertEl.classList.remove("alert-success", "alert-warning");
+          alertEl.classList.add("alert-danger");
+          clearInterval(interval);
+          return;
+        }
+
+        // Hitung mundur menggunakan date object untuk akurasi bulan
+        const currentDate = new Date(now);
+        const endDate = new Date(expiryDate);
+
+        let years = endDate.getFullYear() - currentDate.getFullYear();
+        let months = endDate.getMonth() - currentDate.getMonth();
+        let days = endDate.getDate() - currentDate.getDate();
+        let hours = endDate.getHours() - currentDate.getHours();
+        let minutes = endDate.getMinutes() - currentDate.getMinutes();
+        let seconds = endDate.getSeconds() - currentDate.getSeconds();
+
+        // Adjustment untuk nilai negatif
+        if (seconds < 0) {
+          seconds += 60;
+          minutes--;
+        }
+        if (minutes < 0) {
+          minutes += 60;
+          hours--;
+        }
+        if (hours < 0) {
+          hours += 24;
+          days--;
+        }
+        if (days < 0) {
+          const prevMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0);
+          days += prevMonth.getDate();
+          months--;
+        }
+        if (months < 0) {
+          months += 12;
+          years--;
+        }
+
+        // Format output - hanya tampilkan yang tidak nol
+        let countdownText = '';
+
+        if (years > 0) countdownText += years + ' tahun ';
+        if (months > 0) countdownText += months + ' bulan ';
+        if (days > 0) countdownText += days + ' hari ';
+        countdownText += hours + ' jam ' + minutes + ' menit ' + seconds + ' detik';
+
+        countdownEl.innerHTML = countdownText.trim();
+
+        // Ubah warna alert jika kurang dari 1 tahun
+        const oneYearInMs = 365 * 24 * 60 * 60 * 1000;
+        const alertElement = document.getElementById('alert-sertifikat');
+
+        if (distance < oneYearInMs) {
+          alertElement.classList.remove('alert-success');
+          alertElement.classList.add('alert-danger');
+        }
+      }
+
+      const interval = setInterval(calcRemaining, 1000);
+      calcRemaining();
+    }
+
+
+
 
     // Cek status awal dari PHP dan render UI yang sesuai
     const statusAwal = '<?php echo $data['status_validasi']; ?>';
@@ -1746,10 +2306,7 @@ try {
           </p>
         </div>
       `;
-    } // ===== GANTI BAGIAN INI DI JAVASCRIPT detail-pendaftar.php =====
-
-    // Bagian render untuk status "Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian"
-    else if (statusAwal === 'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian') {
+    } else if (statusAwal === 'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian') {
       reviewFieldset.innerHTML = `
     <legend>Upload Hasil Verifikasi Kementerian</legend>
     <div class="alert alert-info mb-3">
@@ -1773,8 +2330,8 @@ try {
                 <input type="file" 
                        class="form-control" 
                        id="fileSertifikat" 
-                       accept=".pdf,.jpg,.jpeg,.png">
-                <div class="form-text">Format: PDF, JPG, JPEG, PNG (Max 10MB)</div>
+                       accept=".pdf">
+                <div class="form-text">Format: PDF (Max 10MB)</div>
               </div>
               <button type="submit" class="btn btn-success w-100" id="btnUploadSertifikat">
                 <i class="bi bi-upload me-2"></i>Upload Sertifikat
@@ -1797,8 +2354,8 @@ try {
                 <input type="file" 
                        class="form-control" 
                        id="filePenolakan" 
-                       accept=".pdf,.jpg,.jpeg,.png">
-                <div class="form-text">Format: PDF, JPG, JPEG, PNG (Max 10MB)</div>
+                       accept=".pdf">
+                <div class="form-text">Format: PDF (Max 10MB)</div>
               </div>
               <button type="submit" class="btn btn-danger w-100" id="btnUploadPenolakan">
                 <i class="bi bi-upload me-2"></i>Upload Surat Penolakan
@@ -1810,34 +2367,113 @@ try {
     </div>
   `;
 
-      // Handler Upload Sertifikat
+        // Handler Upload Sertifikat
       const formSertifikat = document.getElementById('formSertifikat');
       if (formSertifikat) {
-        formSertifikat.addEventListener('submit', function(e) {
-          e.preventDefault();
+        const fileInputSertifikat = document.getElementById('fileSertifikat');
+        
+        // Event ketika file dipilih - langsung tampilkan preview
+        fileInputSertifikat.addEventListener('change', function() {
+          const file = this.files[0];
 
-          const fileInput = document.getElementById('fileSertifikat');
-          const btnUpload = document.getElementById('btnUploadSertifikat');
+          if (!file) return;
 
-          if (!fileInput.files[0]) {
-            alert('Silakan pilih file terlebih dahulu!');
-            return;
-          }
-
-          if (fileInput.files[0].size > 10 * 1024 * 1024) {
+          // Validasi ukuran
+          if (file.size > 10 * 1024 * 1024) {
             alert('Ukuran file maksimal 10MB!');
+            this.value = '';
             return;
           }
 
+          // Validasi format
+          const allowedExt = ['pdf'];
+          const fileExt = file.name.split('.').pop().toLowerCase();
+
+          if (!allowedExt.includes(fileExt)) {
+            alert('Format file harus PDF!');
+            this.value = '';
+            return;
+          }
+
+          // Tampilkan modal preview
+          showPreviewModalSertifikat(file);
+        });
+
+        function showPreviewModalSertifikat(file) {
+          const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+          const modalTitle = document.getElementById('modalTitle');
+          const imageContainer = document.getElementById('imageContainer');
+          const pdfContainer = document.getElementById('pdfContainer');
+          const modalImg = document.getElementById('modalImage');
+          const modalPdf = document.getElementById('modalPdf');
+          const downloadBtn = document.getElementById('downloadBtn');
+
+          modalTitle.textContent = 'Preview: Sertifikat Merek';
+
+          const fileExt = file.name.split('.').pop().toLowerCase();
+          const fileURL = URL.createObjectURL(file);
+
+          if (fileExt === 'pdf') {
+            // Preview PDF
+            imageContainer.style.display = 'none';
+            pdfContainer.style.display = 'block';
+            modalPdf.src = fileURL + '#toolbar=0';
+          } else {
+            // Preview gambar
+            pdfContainer.style.display = 'none';
+            imageContainer.style.display = 'block';
+            modalImg.src = fileURL;
+          }
+
+          // Ganti tombol download dengan tombol konfirmasi upload
+          downloadBtn.outerHTML = `
+            <button id="btnKonfirmasiUploadSertifikat" class="btn btn-success btn-sm">
+              <i class="bi bi-upload me-2"></i>Konfirmasi & Upload
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+              <i class="bi bi-x me-1"></i>Batal
+            </button>
+          `;
+
+          modal.show();
+
+          // Handler konfirmasi upload
+          document.getElementById('btnKonfirmasiUploadSertifikat').addEventListener('click', function() {
+            modal.hide();
+            uploadSertifikat(file);
+            URL.revokeObjectURL(fileURL);
+          });
+
+          // Cleanup saat modal ditutup
+          document.getElementById('imageModal').addEventListener('hidden.bs.modal', function() {
+            URL.revokeObjectURL(fileURL);
+            modalPdf.src = '';
+            modalImg.src = '';
+
+            // Kembalikan tombol download
+            const btnConfirm = document.getElementById('btnKonfirmasiUploadSertifikat');
+            if (btnConfirm && btnConfirm.parentElement) {
+              btnConfirm.parentElement.innerHTML = `
+                <a id="downloadBtn" href="#" download class="btn btn-success btn-sm">
+                  <i class="bi bi-download me-1"></i>Download
+                </a>
+              `;
+            }
+          }, { once: true });
+        }
+
+        function uploadSertifikat(file) {
           if (!confirm('Apakah Anda yakin ingin mengupload Sertifikat Merek ini?')) {
+            fileInputSertifikat.value = '';
             return;
           }
 
           const formData = new FormData();
           formData.append('id_pendaftaran', ID_PENDAFTARAN);
           formData.append('id_jenis_file', 7); // 7 = Sertifikat Terbit
-          formData.append('file', fileInput.files[0]);
+          formData.append('file', file);
 
+          const btnUpload = document.getElementById('btnUploadSertifikat');
           btnUpload.disabled = true;
           btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Mengupload...';
 
@@ -1855,6 +2491,7 @@ try {
                   });
               } else {
                 alert('Gagal upload: ' + data.message);
+                fileInputSertifikat.value = '';
                 btnUpload.disabled = false;
                 btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Sertifikat';
               }
@@ -1862,40 +2499,131 @@ try {
             .catch(error => {
               console.error('Error:', error);
               alert('Terjadi kesalahan saat upload file');
+              fileInputSertifikat.value = '';
               btnUpload.disabled = false;
               btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Sertifikat';
             });
+        }
+
+        // Event submit form (backup)
+        formSertifikat.addEventListener('submit', function(e) {
+          e.preventDefault();
+          const file = fileInputSertifikat.files[0];
+          if (file) {
+            uploadSertifikat(file);
+          } else {
+            alert('Silakan pilih file terlebih dahulu!');
+          }
         });
       }
 
       // Handler Upload Surat Penolakan
       const formPenolakan = document.getElementById('formPenolakan');
       if (formPenolakan) {
-        formPenolakan.addEventListener('submit', function(e) {
-          e.preventDefault();
+        const fileInputPenolakan = document.getElementById('filePenolakan');
+        
+        // Event ketika file dipilih - langsung tampilkan preview
+        fileInputPenolakan.addEventListener('change', function() {
+          const file = this.files[0];
 
-          const fileInput = document.getElementById('filePenolakan');
-          const btnUpload = document.getElementById('btnUploadPenolakan');
+          if (!file) return;
 
-          if (!fileInput.files[0]) {
-            alert('Silakan pilih file terlebih dahulu!');
-            return;
-          }
-
-          if (fileInput.files[0].size > 10 * 1024 * 1024) {
+          // Validasi ukuran
+          if (file.size > 10 * 1024 * 1024) {
             alert('Ukuran file maksimal 10MB!');
+            this.value = '';
             return;
           }
 
+          // Validasi format
+          const allowedExt = ['pdf'];
+          const fileExt = file.name.split('.').pop().toLowerCase();
+
+          if (!allowedExt.includes(fileExt)) {
+            alert('Format file harus PDF!');
+            this.value = '';
+            return;
+          }
+
+          // Tampilkan modal preview
+          showPreviewModalPenolakan(file);
+        });
+
+        function showPreviewModalPenolakan(file) {
+          const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+          const modalTitle = document.getElementById('modalTitle');
+          const imageContainer = document.getElementById('imageContainer');
+          const pdfContainer = document.getElementById('pdfContainer');
+          const modalImg = document.getElementById('modalImage');
+          const modalPdf = document.getElementById('modalPdf');
+          const downloadBtn = document.getElementById('downloadBtn');
+
+          modalTitle.textContent = 'Preview: Surat Penolakan';
+
+          const fileExt = file.name.split('.').pop().toLowerCase();
+          const fileURL = URL.createObjectURL(file);
+
+          if (fileExt === 'pdf') {
+            // Preview PDF
+            imageContainer.style.display = 'none';
+            pdfContainer.style.display = 'block';
+            modalPdf.src = fileURL + '#toolbar=0';
+          } else {
+            // Preview gambar
+            pdfContainer.style.display = 'none';
+            imageContainer.style.display = 'block';
+            modalImg.src = fileURL;
+          }
+
+          // Ganti tombol download dengan tombol konfirmasi upload
+          downloadBtn.outerHTML = `
+            <button id="btnKonfirmasiUploadPenolakan" class="btn btn-danger btn-sm">
+              <i class="bi bi-upload me-2"></i>Konfirmasi & Upload
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+              <i class="bi bi-x me-1"></i>Batal
+            </button>
+          `;
+
+          modal.show();
+
+          // Handler konfirmasi upload
+          document.getElementById('btnKonfirmasiUploadPenolakan').addEventListener('click', function() {
+            modal.hide();
+            uploadPenolakan(file);
+            URL.revokeObjectURL(fileURL);
+          });
+
+          // Cleanup saat modal ditutup
+          document.getElementById('imageModal').addEventListener('hidden.bs.modal', function() {
+            URL.revokeObjectURL(fileURL);
+            modalPdf.src = '';
+            modalImg.src = '';
+
+            // Kembalikan tombol download
+            const btnConfirm = document.getElementById('btnKonfirmasiUploadPenolakan');
+            if (btnConfirm && btnConfirm.parentElement) {
+              btnConfirm.parentElement.innerHTML = `
+                <a id="downloadBtn" href="#" download class="btn btn-success btn-sm">
+                  <i class="bi bi-download me-1"></i>Download
+                </a>
+              `;
+            }
+          }, { once: true });
+        }
+
+        function uploadPenolakan(file) {
           if (!confirm('Apakah Anda yakin ingin mengupload Surat Penolakan ini?')) {
+            fileInputPenolakan.value = '';
             return;
           }
 
           const formData = new FormData();
           formData.append('id_pendaftaran', ID_PENDAFTARAN);
           formData.append('id_jenis_file', 8); // 8 = Surat Penolakan
-          formData.append('file', fileInput.files[0]);
+          formData.append('file', file);
 
+          const btnUpload = document.getElementById('btnUploadPenolakan');
           btnUpload.disabled = true;
           btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Mengupload...';
 
@@ -1913,6 +2641,7 @@ try {
                   });
               } else {
                 alert('Gagal upload: ' + data.message);
+                fileInputPenolakan.value = '';
                 btnUpload.disabled = false;
                 btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Penolakan';
               }
@@ -1920,9 +2649,21 @@ try {
             .catch(error => {
               console.error('Error:', error);
               alert('Terjadi kesalahan saat upload file');
+              fileInputPenolakan.value = '';
               btnUpload.disabled = false;
               btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Penolakan';
             });
+        }
+
+        // Event submit form (backup)
+        formPenolakan.addEventListener('submit', function(e) {
+          e.preventDefault();
+          const file = fileInputPenolakan.files[0];
+          if (file) {
+            uploadPenolakan(file);
+          } else {
+            alert('Silakan pilih file terlebih dahulu!');
+          }
         });
       }
     } else if (statusAwal === 'Diajukan ke Kementerian') {

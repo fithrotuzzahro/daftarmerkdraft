@@ -59,7 +59,7 @@ try {
         'Konfirmasi Lanjut' => 0,
         'Surat Keterangan Difasilitasi' => 0,
         'Menunggu Bukti Pendaftaran' => 0,
-        'Bukti Pendaftaran Terbit dan Diajukan ke Kementerian' => 0,
+        'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' => 0,
         'Hasil Verifikasi Kementerian' => 0
     ];
     
@@ -137,7 +137,7 @@ function getBadgeClass($status) {
         'Konfirmasi Lanjut' => 'violet',         
         'Surat Keterangan Difasilitasi' => 'infoish',
         'Menunggu Bukti Pendaftaran' => 'emerald',   
-        'Bukti Pendaftaran Terbit dan Diajukan ke Kementerian' => 'yellow',
+        'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' => 'yellow',
         'Hasil Verifikasi Kementerian' => 'mint' 
     ];
     return $badges[$status] ?? 'secondary';
@@ -146,12 +146,12 @@ function getBadgeClass($status) {
 // Function untuk display text status - UPDATE label
 function getDisplayStatus($status) {
     $displayText = [
-        'Pengecekan Berkas' => 'PENGECEKAN BERKAS',
+        'Pengecekan Berkas' => 'BERKAS BARU',
         'Tidak Bisa Difasilitasi' => 'TIDAK BISA DIFASILITASI',
         'Konfirmasi Lanjut' => 'KONFIRMASI LANJUT',
         'Surat Keterangan Difasilitasi' => 'SURAT KETERANGAN DIFASILITASI',
         'Menunggu Bukti Pendaftaran' => 'MENUNGGU BUKTI PENDAFTARAN',
-        'Bukti Pendaftaran Terbit dan Diajukan ke Kementerian' => 'BUKTI PENDAFTARAN TERBIT',
+        'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' => 'BUKTI PENDAFTARAN TERBIT',
         'Hasil Verifikasi Kementerian' => 'HASIL VERIFIKASI KEMENTERIAN'
     ];
     return $displayText[$status] ?? strtoupper($status);
@@ -225,7 +225,7 @@ function getDisplayStatus($status) {
                 <div class="col">
                     <div class="card stat-card bg-scan h-100">
                         <div class="card-body">
-                            <div class="stat-title">Pengecekan Berkas</div>
+                            <div class="stat-title">Berkas Baru</div>
                             <div class="display-6 fw-bold"><?php echo $stats['Pengecekan Berkas']; ?></div>
                             <div class="stat-sub">pendaftar</div>
                         </div>
@@ -276,7 +276,7 @@ function getDisplayStatus($status) {
                     <div class="card stat-card bg-yellow h-100">
                         <div class="card-body">
                             <div class="stat-title">Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian</div>
-                            <div class="display-6 fw-bold"><?php echo $stats['Bukti Pendaftaran Terbit dan Diajukan ke Kementerian']; ?></div>
+                            <div class="display-6 fw-bold"><?php echo $stats['Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian']; ?></div>
                             <div class="stat-sub">pendaftar</div>
                         </div>
                     </div>
@@ -330,12 +330,12 @@ function getDisplayStatus($status) {
                             <label class="form-label small mb-1">Berdasarkan Status</label>
                             <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
                                 <option value="">Semua</option>
-                                <option value="Pengecekan Berkas" <?php echo $filter_status == 'Pengecekan Berkas' ? 'selected' : ''; ?>>Pengecekan Berkas</option>
+                                <option value="Pengecekan Berkas" <?php echo $filter_status == 'Pengecekan Berkas' ? 'selected' : ''; ?>>Berkas Baru</option>
                                 <option value="Tidak Bisa Difasilitasi" <?php echo $filter_status == 'Tidak Bisa Difasilitasi' ? 'selected' : ''; ?>>Tidak Bisa Difasilitasi</option>
                                 <option value="Konfirmasi Lanjut" <?php echo $filter_status == 'Konfirmasi Lanjut' ? 'selected' : ''; ?>>Konfirmasi Lanjut</option>
                                 <option value="Surat Keterangan Difasilitasi" <?php echo $filter_status == 'Surat Keterangan Difasilitasi' ? 'selected' : ''; ?>>Surat Keterangan Difasilitasi</option>
                                 <option value="Menunggu Bukti Pendaftaran" <?php echo $filter_status == 'Menunggu Bukti Pendaftaran' ? 'selected' : ''; ?>>Menunggu Bukti Pendaftaran</option>
-                                <option value="Bukti Pendaftaran Terbit dan Diajukan ke Kementerian" <?php echo $filter_status == 'Bukti Pendaftaran Terbit dan Diajukan ke Kementerian' ? 'selected' : ''; ?>>Bukti Pendaftaran Terbit</option>
+                                <option value="Bukti Pendaftaran Terbit dan Diajukan ke Kementerian" <?php echo $filter_status == 'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' ? 'selected' : ''; ?>>Bukti Pendaftaran Terbit</option>
                                 <option value="Hasil Verifikasi Kementerian" <?php echo $filter_status == 'Hasil Verifikasi Kementerian' ? 'selected' : ''; ?>>Hasil Verifikasi Kementerian</option>
                             </select>
                         </div>

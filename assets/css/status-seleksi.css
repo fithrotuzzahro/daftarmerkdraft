@@ -8,6 +8,11 @@ body {
   padding: 0;
 }
 
+body.modal-open {
+  overflow: auto !important;
+  padding-right: 0 !important;
+}
+
 .main-content {
   padding: 40px 0;
   padding-top: 90px;
@@ -72,6 +77,10 @@ body {
 .proses-sertifikatterbit {
   background-color: #06923E !important;
 } 
+
+.proses-buktiterbit {
+  background-color: #9CA413;
+}
 
 .status-box {
   border: 2px dashed #dee2e6;
@@ -196,4 +205,32 @@ body {
   .footer p {
     font-size: 12px;
   }
+}
+
+#filePreview {
+  transition: all 0.3s ease;
+}
+
+.file-icon-preview {
+  font-size: 2.5rem;
+}
+
+.file-info {
+  flex: 1;
+}
+
+#fileIcon i {
+  transition: transform 0.2s ease;
+}
+
+#fileIcon i:hover {
+  transform: scale(1.1);
+}
+
+#btnViewFile:hover {
+  transform: translateY(-1px);
+}
+
+.step-card .card-body {
+  padding: 1.5rem;
 }

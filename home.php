@@ -26,6 +26,35 @@ try {
 } catch (PDOException $e) {
     error_log("Error checking pendaftaran: " . $e->getMessage());
 }
+
+$total_kuota = 100;
+
+$tahun_sekarang = date('Y');
+
+try {
+    $query_difasilitasi = "SELECT COUNT(*) as jumlah_difasilitasi 
+                           FROM pendaftaran 
+                           WHERE merek_difasilitasi IS NOT NULL 
+                           AND YEAR(tgl_daftar) = :tahun";
+    
+    $stmt = $pdo->prepare($query_difasilitasi);
+    $stmt->execute(['tahun' => $tahun_sekarang]);
+    $data = $stmt->fetch();
+    $jumlah_difasilitasi = $data['jumlah_difasilitasi'];
+    
+    $kuota_tersedia = $total_kuota - $jumlah_difasilitasi;
+    
+    // Pastikan kuota tersedia tidak negatif
+    if ($kuota_tersedia < 0) {
+        $kuota_tersedia = 0;
+    }
+} catch (PDOException $e) {
+    // Jika terjadi error, set nilai default
+    $jumlah_difasilitasi = 0;
+    $kuota_tersedia = $total_kuota;
+    error_log("Error mengambil data kuota: " . $e->getMessage());
+}
+
 ?>
 
 
@@ -156,31 +185,30 @@ try {
 
     <!-- Kuota -->
     <section class="kuota-section" id="kuota">
-        <div class="container">
-            <h2 class="section-title">KUOTA PENDAFTARAN MEREK</h2>
-            <div class="row justify-content-center">
-                <div class="col-md-3">
-                    <div class="kuota-card blue">
-                        <div class="kuota-nomor">100</div>
-                        <div class="kuota-text">Jumlah kuota<br>per tahun</div>
-                    </div>
+    <div class="container">
+        <h2 class="section-title">KUOTA PENDAFTARAN MEREK</h2>
+        <div class="row justify-content-center">
+            <div class="col-md-3">
+                <div class="kuota-card blue">
+                    <div class="kuota-nomor"><?php echo $total_kuota; ?></div>
+                    <div class="kuota-text">Jumlah kuota<br>per tahun</div>
                 </div>
-                <div class="col-md-3">
-                    <div class="kuota-card green">
-                        <div class="kuota-nomor">43</div>
-                        <div class="kuota-text">Jumlah kuota<br>tersedia</div>
-                    </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kuota-card green">
+                    <div class="kuota-nomor"><?php echo $kuota_tersedia; ?></div>
+                    <div class="kuota-text">Jumlah kuota<br>tersedia</div>
                 </div>
-                <div class="col-md-3">
-                    <div class="kuota-card red">
-                        <div class="kuota-nomor">57</div>
-                        <div class="kuota-text">Merek sudah<br>difasilitasi</div>
-                    </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kuota-card red">
+                    <div class="kuota-nomor"><?php echo $jumlah_difasilitasi; ?></div>
+                    <div class="kuota-text">Merek sudah<br>difasilitasi</div>
                 </div>
-
             </div>
         </div>
-    </section>
+    </div>
+</section>
 
     <section class="cta-section">
         <div class="container">

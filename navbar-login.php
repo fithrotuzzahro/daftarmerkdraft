@@ -91,6 +91,48 @@
         right: 0;
     }
 
+    /* Notifikasi Item */
+    .notif-item {
+        padding: 12px;
+        border-radius: 8px;
+        transition: background-color 0.2s;
+        cursor: pointer;
+    }
+
+    .notif-item:hover {
+        background-color: #f8f9fa;
+    }
+
+    .notif-item.unread {
+        background-color: #e7f3ff;
+        border-left: 3px solid #0d6efd;
+    }
+
+    .notif-item.unread:hover {
+        background-color: #d4e9ff;
+    }
+
+    .notif-empty {
+        text-align: center;
+        padding: 40px 20px;
+        color: #6c757d;
+    }
+
+    .notif-empty i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+
+    /* Badge notifikasi */
+    .notif-badge {
+        display: none;
+    }
+
+    .notif-badge.show {
+        display: inline-block;
+    }
+
     /* Mobile Menu */
     .mobile-menu {
         position: fixed;
@@ -131,6 +173,17 @@
         display: flex;
         align-items: center;
         justify-content: center;
+    }
+
+    /* Loading spinner */
+    .notif-loading {
+        text-align: center;
+        padding: 20px;
+    }
+
+    .spinner-border-sm {
+        width: 1.5rem;
+        height: 1.5rem;
     }
 
     @media (max-width: 768px) {
@@ -177,10 +230,10 @@
             </ul>
             
             <div class="d-flex align-items-center gap-3">
-                <a class="btn btn-outline-dark position-relative" id="notifBtn">
+                <a class="btn btn-outline-dark position-relative" id="notifBtn" style="cursor: pointer;">
                     <i class="bi bi-bell"></i>
-                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                        3
+                    <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger notif-badge">
+                        0
                     </span>
                 </a>
 
@@ -192,10 +245,10 @@
 
         <!-- Mobile buttons (notif & menu) -->
         <div class="d-flex d-lg-none align-items-center gap-2 ms-auto">
-            <a class="btn btn-outline-dark btn-sm position-relative btn-notif-mobile" id="notifBtnMobile">
+            <a class="btn btn-outline-dark btn-sm position-relative btn-notif-mobile" id="notifBtnMobile" style="cursor: pointer;">
                 <i class="bi bi-bell"></i>
-                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                    3
+                <span id="notifBadgeMobile" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger notif-badge">
+                    0
                 </span>
             </a>
             
@@ -225,16 +278,14 @@
         <h5 class="mb-0">Notifikasi</h5>
         <button id="closeNotif" class="btn-close"></button>
     </div>
-    <div class="notif-body p-3">
-        <div class="notif-item d-flex mb-3">
-            <i class="bi bi-bell me-2 mt-1"></i>
-            <div>
-                <strong>Merek dalam Proses Pengecekan Berkas</strong>
-                <p class="mb-1">Anda baru saja mengajukan permohonan merek, sekarang merek dalam proses pengecekan berkas.</p>
-                <small class="text-muted fst-italic">2025-09-28 14:30:00</small>
+    <div class="notif-body p-3" id="notifBody">
+        <!-- Loading state -->
+        <div class="notif-loading">
+            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
             </div>
+            <p class="mt-2 mb-0">Memuat notifikasi...</p>
         </div>
-        <hr>
     </div>
 </div>
 
@@ -251,6 +302,148 @@
     const notifPanel = document.getElementById('notifPanel');
     const closeNotif = document.getElementById('closeNotif');
     const navbar = document.querySelector('.navbar');
+    const notifBody = document.getElementById('notifBody');
+    const notifBadge = document.getElementById('notifBadge');
+    const notifBadgeMobile = document.getElementById('notifBadgeMobile');
+
+    // Fungsi untuk memformat tanggal
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        const options = { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        };
+        return date.toLocaleDateString('id-ID', options);
+    }
+
+    // Fungsi untuk memuat notifikasi
+    async function loadNotifications() {
+        try {
+            const response = await fetch('process/get_notifications.php');
+            const data = await response.json();
+
+            if (data.success) {
+                displayNotifications(data.notifications, data.unread_count);
+            } else {
+                notifBody.innerHTML = `
+                    <div class="notif-empty">
+                        <i class="bi bi-exclamation-circle"></i>
+                        <p>Gagal memuat notifikasi</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            notifBody.innerHTML = `
+                <div class="notif-empty">
+                    <i class="bi bi-wifi-off"></i>
+                    <p>Tidak dapat terhubung ke server</p>
+                </div>
+            `;
+        }
+    }
+
+    // Fungsi untuk menampilkan notifikasi
+    function displayNotifications(notifications, unreadCount) {
+        // Update badge
+        if (unreadCount > 0) {
+            notifBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+            notifBadgeMobile.textContent = unreadCount > 99 ? '99+' : unreadCount;
+            notifBadge.classList.add('show');
+            notifBadgeMobile.classList.add('show');
+        } else {
+            notifBadge.classList.remove('show');
+            notifBadgeMobile.classList.remove('show');
+        }
+
+        // Display notifications
+        if (notifications.length === 0) {
+            notifBody.innerHTML = `
+                <div class="notif-empty">
+                    <i class="bi bi-bell-slash"></i>
+                    <p>Tidak ada notifikasi</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        notifications.forEach((notif, index) => {
+            const isUnread = notif.is_read == 0;
+            const unreadClass = isUnread ? 'unread' : '';
+            
+            html += `
+                <div class="notif-item ${unreadClass} mb-2" data-id="${notif.id_notif}" data-read="${notif.is_read}" data-pendaftaran="${notif.id_pendaftaran}">
+                    <div class="d-flex">
+                        <i class="bi bi-bell${isUnread ? '-fill' : ''} me-2 mt-1"></i>
+                        <div class="flex-grow-1">
+                            <strong>${notif.id_pendaftaran ? `Pendaftaran #${notif.id_pendaftaran}` : 'Pemberitahuan'}</strong>
+                            <p class="mb-1">${notif.deskripsi}</p>
+                            <small class="text-muted fst-italic">${formatDate(notif.tgl_notif)}</small>
+                        </div>
+                    </div>
+                </div>
+                ${index < notifications.length - 1 ? '<hr class="my-2">' : ''}
+            `;
+        });
+
+        notifBody.innerHTML = html;
+
+        // Add click event to mark as read and redirect
+        document.querySelectorAll('.notif-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const notifId = this.getAttribute('data-id');
+                const isRead = this.getAttribute('data-read');
+                const idPendaftaran = this.getAttribute('data-pendaftaran');
+                
+                if (isRead == 0) {
+                    markAsRead(notifId, this);
+                }
+                
+                // Redirect ke halaman status dengan id_pendaftaran
+                if (idPendaftaran) {
+                    window.location.href = `status-seleksi-pendaftaran.php?id=${idPendaftaran}`;
+                }
+            });
+        });
+    }
+
+    // Fungsi untuk menandai notifikasi sebagai dibaca
+    async function markAsRead(notifId, element) {
+        try {
+            const response = await fetch('process/mark_notification_read.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ id_notif: notifId })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                element.classList.remove('unread');
+                element.setAttribute('data-read', '1');
+                
+                // Update badge count
+                const currentBadge = parseInt(notifBadge.textContent);
+                const newCount = Math.max(0, currentBadge - 1);
+                
+                if (newCount > 0) {
+                    notifBadge.textContent = newCount;
+                    notifBadgeMobile.textContent = newCount;
+                } else {
+                    notifBadge.classList.remove('show');
+                    notifBadgeMobile.classList.remove('show');
+                }
+            }
+        } catch (error) {
+            console.error('Error marking notification as read:', error);
+        }
+    }
 
     // Mobile menu toggle
     menuToggle.addEventListener('click', () => {
@@ -265,6 +458,7 @@
             notifPanel.classList.add('active');
             overlay.classList.add('active');
             mobileMenu.classList.remove('active');
+            loadNotifications();
         });
     }
 
@@ -274,6 +468,7 @@
             notifPanel.classList.add('active');
             overlay.classList.add('active');
             mobileMenu.classList.remove('active');
+            loadNotifications();
         });
     }
 
@@ -299,4 +494,24 @@
     
     setMobileMenuPosition();
     window.addEventListener('resize', setMobileMenuPosition);
+
+    // Load notifications on page load
+    loadNotifications();
+
+    // Auto-refresh notifikasi setiap 30 detik
+    setInterval(() => {
+        if (!notifPanel.classList.contains('active')) {
+            // Hanya update badge jika panel tidak terbuka
+            fetch('process/get_notifications.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.unread_count > 0) {
+                        notifBadge.textContent = data.unread_count > 99 ? '99+' : data.unread_count;
+                        notifBadgeMobile.textContent = data.unread_count > 99 ? '99+' : data.unread_count;
+                        notifBadge.classList.add('show');
+                        notifBadgeMobile.classList.add('show');
+                    }
+                });
+        }
+    }, 30000);
 </script>
