@@ -27,7 +27,6 @@ $kel_desa = trim($_POST['kel_desa'] ?? '');
 $kecamatan = trim($_POST['kecamatan'] ?? '');
 $telepon = trim($_POST['telepon'] ?? '');
 $email = trim($_POST['email'] ?? '');
-$password = trim($_POST['password'] ?? '');
 
 if (empty($namaPemilik) || empty($nik) || empty($telepon) || empty($email)) {
     sendResponse(false, 'Harap lengkapi semua field wajib.');
@@ -93,11 +92,6 @@ try {
         ':email' => $email,
         ':nik_session' => $nik_session
     ];
-
-    if (!empty($password)) {
-        $update_fields .= ", password = :password";
-        $params[':password'] = password_hash($password, PASSWORD_BCRYPT);
-    }
 
     if ($foto_ktp) {
         $update_fields .= ", foto_ktp = :foto_ktp";

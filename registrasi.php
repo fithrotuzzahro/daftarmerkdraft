@@ -53,18 +53,12 @@
         <div class="mb-3">
           <label for="telepon" class="form-label">Nomor WhatsApp</label>
           <input type="tel" class="form-control" id="telepon" name="telepon" placeholder="08xxxxxxxxxx" required>
-          <small class="text-muted">Contoh: 081234567890</small>
+          <small class="text-muted">Contoh: 081234567890 (digunakan untuk login)</small>
         </div>
 
         <div class="mb-3">
           <label for="email" class="form-label">Email</label>
           <input type="email" class="form-control" id="email" name="email" placeholder="email@example.com" required>
-        </div>
-
-        <div class="mb-3">
-          <label for="password" class="form-label">Password</label>
-          <input type="password" class="form-control" id="password" name="password" required>
-          <small class="text-muted">Minimal 6 karakter</small>
         </div>
 
         <div class="mb-3">
@@ -98,10 +92,14 @@
           <div class="file-info">Upload 1 file (PDF atau gambar). Maks 1 MB</div>
         </div>
 
+        <div class="alert alert-info">
+          <strong>Informasi:</strong> Setelah registrasi, Anda dapat langsung login menggunakan email atau nomor WhatsApp. Kode OTP akan dikirim saat login.
+        </div>
+
         <div class="d-flex justify-content-end gap-2 mt-4">
           <button type="button" class="btn btn-kembali" onclick="window.history.back()">Kembali</button>
           <button type="submit" class="btn btn-registrasi" id="btnSubmit">
-            Registrasi
+            Daftar
             <span class="loading-spinner" id="loadingSpinner"></span>
           </button>
         </div>
@@ -117,23 +115,25 @@
     </div>
   </footer>
 
-  <!-- Modal Verifikasi OTP -->
-  <div class="modal fade" id="otpModal" tabindex="-1" aria-labelledby="otpModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+  <!-- Modal Success -->
+  <div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content p-3">
-        <div class="modal-header">
-          <h5 class="modal-title" id="otpModalLabel">Verifikasi OTP</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-header border-0">
+          <h5 class="modal-title text-success" id="successModalLabel">
+            <i class="bi bi-check-circle-fill"></i> Registrasi Berhasil!
+          </h5>
         </div>
         <div class="modal-body">
-          <p>Kami telah mengirim kode OTP ke email <strong id="emailDisplay"></strong></p>
-          <p class="text-muted small">Silakan cek inbox atau folder spam Anda.</p>
-          <input type="hidden" id="otpEmail">
-          <input type="text" id="otpCode" class="form-control text-center mb-3" maxlength="6" placeholder="Masukkan kode 6 digit OTP" required>
-          <div id="otpAlert" class="alert d-none mb-2"></div>
-          <button class="btn btn-primary w-100" id="verifyOtpBtn">
-            Verifikasi
-            <span class="loading-spinner" id="loadingSpinnerOtp"></span>
+          <div class="alert alert-success">
+            <strong>✓ Akun Anda telah berhasil dibuat!</strong>
+            <p class="mb-0 mt-2">Silakan login menggunakan email atau nomor WhatsApp yang telah didaftarkan.</p>
+          </div>
+          <p class="text-muted small mb-0">Anda akan diarahkan ke halaman login dalam 3 detik...</p>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-primary w-100" onclick="window.location.href='login.php'">
+            Login Sekarang
           </button>
         </div>
       </div>

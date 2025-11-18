@@ -157,7 +157,6 @@ document.getElementById('registrationForm').addEventListener('submit', async (e)
   const spinner = document.getElementById('loadingSpinner');
 
   const nik = document.getElementById('nik').value;
-  const password = document.getElementById('password').value;
   const telepon = document.getElementById('telepon').value;
   const email = document.getElementById('email').value;
   const fileKTP = document.getElementById('fileKTP').files[0];
@@ -174,12 +173,6 @@ document.getElementById('registrationForm').addEventListener('submit', async (e)
   if (!rtRwPattern.test(rtRw)) {
     alert("Format RT/RW tidak valid.\n\nContoh format yang benar: 002/006");
     document.getElementById('rt_rw').focus();
-    return;
-  }
-
-  // Validasi password
-  if (password.length < 6) {
-    alert("Password terlalu pendek.\n\nMinimal 6 karakter.");
     return;
   }
 
@@ -222,17 +215,19 @@ document.getElementById('registrationForm').addEventListener('submit', async (e)
     const result = await response.json();
 
     if (result.success) {
-      // Set email untuk verifikasi
-      document.getElementById('otpEmail').value = result.email;
-      document.getElementById('emailDisplay').textContent = result.email;
-
-      // Tampilkan modal OTP
-      const modal = new bootstrap.Modal(document.getElementById('otpModal'));
+      // Tampilkan modal sukses
+      const modal = new bootstrap.Modal(document.getElementById('successModal'));
       modal.show();
 
       // Reset form
       e.target.reset();
       clearFilePreview();
+
+      // Auto redirect setelah 3 detik
+      setTimeout(() => {
+        window.location.href = result.redirect || 'login.php';
+      }, 3000);
+
     } else {
       let errorMessage = "Registrasi gagal.\n\n";
       errorMessage += result.message || "Terjadi kesalahan yang tidak diketahui.";
@@ -255,97 +250,4 @@ document.getElementById('registrationForm').addEventListener('submit', async (e)
     btnSubmit.classList.remove('btn-disabled');
     spinner.style.display = 'none';
   }
-});
-
-// Verifikasi OTP
-document.getElementById('verifyOtpBtn').addEventListener('click', async () => {
-  const email = document.getElementById('otpEmail').value;
-  const otp = document.getElementById('otpCode').value.trim();
-  const alertBox = document.getElementById('otpAlert');
-  const btnVerify = document.getElementById('verifyOtpBtn');
-  const spinner = document.getElementById('loadingSpinnerOtp');
-
-  // Validasi OTP
-  if (!otp) {
-    showAlert('warning', "Kode OTP belum diisi.");
-    return;
-  }
-  if (otp.length !== 6) {
-    showAlert('warning', "Kode OTP harus 6 digit.");
-    return;
-  }
-  if (!/^\d+$/.test(otp)) {
-    showAlert('warning', "Kode OTP hanya boleh berisi angka.");
-    return;
-  }
-
-  btnVerify.disabled = true;
-  btnVerify.classList.add('btn-disabled');
-  spinner.style.display = 'inline-block';
-  alertBox.classList.add('d-none');
-
-  try {
-    const response = await fetch('process/verify_otp.php', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        email: email,
-        otp: otp
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error('Server error: ' + response.status);
-    }
-
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const text = await response.text();
-      console.error('Response bukan JSON:', text);
-      throw new Error('Server mengembalikan response yang tidak valid.');
-    }
-
-    const result = await response.json();
-
-    if (result.success) {
-      showAlert('success', "Verifikasi berhasil. Mengalihkan ke halaman login...");
-      setTimeout(() => {
-        window.location.href = 'login.php';
-      }, 2000);
-    } else {
-      showAlert('danger', result.message || "OTP salah atau sudah kedaluwarsa.");
-      document.getElementById('otpCode').value = '';
-      document.getElementById('otpCode').focus();
-    }
-  } catch (err) {
-    console.error('Error:', err);
-    showAlert('danger', "Gagal verifikasi: " + err.message + "\n\nSilakan coba lagi.");
-  } finally {
-    btnVerify.disabled = false;
-    btnVerify.classList.remove('btn-disabled');
-    spinner.style.display = 'none';
-  }
-});
-
-// Helper alert
-function showAlert(type, message) {
-  const alertBox = document.getElementById('otpAlert');
-  alertBox.className = 'alert alert-' + type;
-  alertBox.textContent = message;
-  alertBox.classList.remove('d-none');
-}
-
-// Enter key untuk OTP
-document.getElementById('otpCode').addEventListener('keypress', function(e) {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    document.getElementById('verifyOtpBtn').click();
-  }
-});
-
-// Autofocus OTP saat modal dibuka
-document.getElementById('otpModal').addEventListener('shown.bs.modal', function() {
-  document.getElementById('otpCode').focus();
 });

@@ -2159,7 +2159,7 @@ function getBadgeClass($status)
         const uploadDate = new Date(sertifikatData.tgl_upload);
         const expiryDate = new Date(uploadDate);
         expiryDate.setFullYear(expiryDate.getFullYear() + 10);
-        expiryDate.setHours(23, 59, 59, 999); // Set ke akhir hari (23:59:59)
+        expiryDate.setHours(0, 0, 0, 0); // Set ke akhir hari (23:59:59)
 
         const expiryFormatted = expiryDate.toLocaleDateString('id-ID', {
           day: '2-digit',

@@ -1,7 +1,7 @@
 <?php
 
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'pendaftaran_merk');
+define('DB_NAME', 'daftar_merek');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 

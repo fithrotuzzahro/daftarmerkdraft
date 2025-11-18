@@ -7,62 +7,6 @@ if (isset($_SESSION['NIK_NIP'])) {
     header("Location: home.php");
     exit;
 }
-
-$error_message = '';
-
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
-    $email = trim($_POST['email']);
-    $password = $_POST['password'];
-
-    // Validasi input
-    if (empty($email) || empty($password)) {
-        $error_message = "Email dan password harus diisi!";
-    } elseif (strlen($password) < 6) {
-        $error_message = "Password minimal 6 karakter!";
-    } else {
-        try {
-            $stmt = $pdo->prepare("SELECT * FROM user WHERE email = :email");
-            $stmt->execute(['email' => $email]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($user && password_verify($password, $user['password'])) {
-                // Cek verifikasi akun (jika ada kolom is_verified)
-                if (isset($user['is_verified']) && $user['is_verified'] == 0) {
-                    // Tampilkan modal OTP
-                    echo "<script>
-                        document.addEventListener('DOMContentLoaded', function() {
-                            document.getElementById('otpEmail').value = '" . htmlspecialchars($email, ENT_QUOTES) . "';
-                            document.getElementById('emailDisplay').textContent = '" . htmlspecialchars($email, ENT_QUOTES) . "';
-                            var modal = new bootstrap.Modal(document.getElementById('otpModal'));
-                            modal.show();
-                        });
-                    </script>";
-                    $error_message = "Akun Anda belum terverifikasi!";
-                } else {
-                    // Login berhasil - PERBAIKAN: Simpan NIK ke session
-                    $_SESSION['NIK_NIP'] = $user['NIK_NIP']; // ✅ INI YANG PENTING
-                    $_SESSION['email'] = $user['email'];
-                    $_SESSION['nama_lengkap'] = $user['nama_lengkap'];
-                    $_SESSION['no_wa'] = $user['no_wa'];
-                    $_SESSION['role'] = $user['role'];
-                    
-                    // Redirect berdasarkan role
-                    if ($user['role'] == 'Admin') {
-                        header("Location: dashboard-admin.php");
-                    } else {
-                        header("Location: home.php");
-                    }
-                    exit;
-                }
-            } else {
-                $error_message = "Email atau password salah!";
-            }
-        } catch (PDOException $e) {
-            $error_message = "Terjadi kesalahan sistem. Silakan coba lagi.";
-            error_log("Login Error: " . $e->getMessage());
-        }
-    }
-}
 ?>
 
 <!DOCTYPE html>
@@ -77,13 +21,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     <style>
         .loading-spinner {
             display: none;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #007bff;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007bff;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-left: 10px;
+            animation: spin 0.8s linear infinite;
+            margin-left: 8px;
+            vertical-align: middle;
         }
 
         @keyframes spin {
@@ -93,7 +38,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
 
         .btn-disabled {
             opacity: 0.6;
-            cursor: not-allowed;
+            cursor: not-allowed !important;
+            pointer-events: none;
+        }
+
+        .otp-input {
+            font-size: 24px;
+            letter-spacing: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .countdown-text {
+            font-size: 14px;
+            color: #666;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -107,35 +66,51 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         <div class="login-card">
             <h2 class="login-title">Login</h2>
             <p class="login-subtitle">
-                Jika belum mempunyai akun silahkan tekan <strong>registrasi</strong> terlebih dulu
+                Masukkan email atau nomor WhatsApp Anda untuk menerima kode OTP
             </p>
 
-            <?php if (!empty($error_message)): ?>
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    <strong>Error!</strong> <?php echo htmlspecialchars($error_message); ?>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            <?php endif; ?>
+            <div id="alertBox" class="alert d-none" role="alert"></div>
 
-            <form method="POST" action="login.php">
+            <!-- Form Request OTP -->
+            <form id="requestOtpForm">
                 <div class="mb-3">
-                    <label for="email" class="form-label">Email</label>
-                    <input type="email" class="form-control" id="email" name="email" 
-                           placeholder="email@example.com" 
-                           value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>" 
-                           required>
-                </div>
-
-                <div class="mb-4">
-                    <label for="password" class="form-label">Password</label>
-                    <input type="password" class="form-control" id="password" name="password" required>
-                    <small class="text-muted">Minimal 6 karakter</small>
+                    <label for="identifier" class="form-label">Email atau Nomor WhatsApp</label>
+                    <input type="text" class="form-control" id="identifier" name="identifier" 
+                           placeholder="email@example.com atau 081234567890" required>
+                    <small class="text-muted">Gunakan email atau nomor WA yang terdaftar</small>
                 </div>
 
                 <div class="d-flex gap-2 flex-wrap justify-content-end">
                     <a href="registrasi.php" class="btn-register">Registrasi</a>
-                    <button type="submit" name="login" class="login">
-                        Masuk
+                    <button type="submit" class="login" id="btnRequestOtp">
+                        Kirim OTP
+                        <span class="loading-spinner" id="spinnerRequest"></span>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Form Verifikasi OTP (Hidden by default) -->
+            <form id="verifyOtpForm" style="display: none;">
+                <div class="mb-3">
+                    <label for="otpCode" class="form-label">Kode OTP</label>
+                    <input type="text" class="form-control otp-input" id="otpCode" name="otpCode" 
+                           maxlength="6" placeholder="000000" required inputmode="numeric">
+                    <small class="text-muted">Masukkan 6 digit kode OTP</small>
+                    <div class="countdown-text text-center" id="countdown"></div>
+                </div>
+
+                <input type="hidden" id="hiddenIdentifier" name="hiddenIdentifier">
+
+                <div class="d-flex gap-2 flex-wrap justify-content-end">
+                    <button type="button" class="btn btn-outline-secondary" id="btnBack">
+                        Kembali
+                    </button>
+                    <button type="button" class="btn btn-link" id="btnResend" disabled>
+                        Kirim Ulang OTP
+                    </button>
+                    <button type="submit" class="login" id="btnVerifyOtp">
+                        Verifikasi
+                        <span class="loading-spinner" id="spinnerVerify"></span>
                     </button>
                 </div>
             </form>
@@ -150,103 +125,121 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         </div>
     </footer>
 
-    <!-- Modal Verifikasi OTP -->
-    <div class="modal fade" id="otpModal" tabindex="-1" aria-labelledby="otpModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content p-3">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="otpModalLabel">Verifikasi Akun</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-warning">
-                        <strong>⚠️ Akun belum terverifikasi!</strong>
-                        <p class="mb-0 mt-2">Kami telah mengirim ulang kode OTP ke email <strong id="emailDisplay"></strong></p>
-                    </div>
-                    <p class="text-muted small">Silakan cek inbox atau folder spam Anda.</p>
-                    <input type="hidden" id="otpEmail">
-                    <input type="text" id="otpCode" class="form-control text-center mb-3" maxlength="6" placeholder="Masukkan kode 6 digit OTP" required>
-                    <div id="otpAlert" class="alert d-none mb-2"></div>
-                    <button class="btn btn-primary w-100 mb-2" id="verifyOtpBtn">
-                        Verifikasi
-                        <span class="loading-spinner" id="loadingSpinnerOtp"></span>
-                    </button>
-                    <button class="btn btn-outline-secondary w-100" id="resendOtpBtn">
-                        Kirim Ulang OTP
-                    </button>
-                    <small class="text-muted d-block text-center mt-2">Kode OTP berlaku selama 10 menit</small>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Verifikasi OTP
-        document.getElementById('verifyOtpBtn').addEventListener('click', async () => {
-            const email = document.getElementById('otpEmail').value;
-            const otp = document.getElementById('otpCode').value.trim();
-            const alertBox = document.getElementById('otpAlert');
-            const btnVerify = document.getElementById('verifyOtpBtn');
-            const spinner = document.getElementById('loadingSpinnerOtp');
+        let countdownInterval;
+        let resendTimeout;
 
-            // Validasi OTP
-            if (!otp) {
-                showAlert('warning', "Kode OTP belum diisi.");
+        // Request OTP
+        document.getElementById('requestOtpForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const identifier = document.getElementById('identifier').value.trim();
+            const btnRequest = document.getElementById('btnRequestOtp');
+            const spinner = document.getElementById('spinnerRequest');
+
+            if (!identifier) {
+                showAlert('warning', 'Email atau nomor WhatsApp harus diisi!');
                 return;
             }
-            if (otp.length !== 6) {
-                showAlert('warning', "Kode OTP harus 6 digit.");
+
+            btnRequest.disabled = true;
+            btnRequest.classList.add('btn-disabled');
+            spinner.style.display = 'inline-block';
+            hideAlert();
+
+            try {
+                const response = await fetch('process/request_otp.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({ identifier: identifier })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('success', result.message);
+                    
+                    // Simpan identifier
+                    document.getElementById('hiddenIdentifier').value = identifier;
+                    
+                    // Switch ke form OTP
+                    document.getElementById('requestOtpForm').style.display = 'none';
+                    document.getElementById('verifyOtpForm').style.display = 'block';
+                    document.getElementById('otpCode').focus();
+                    
+                    // Start countdown
+                    startCountdown(300); // 5 menit
+                    
+                    // Enable resend after 60 seconds
+                    startResendTimer(60);
+                } else {
+                    showAlert('danger', result.message);
+                }
+            } catch (err) {
+                console.error('Error:', err);
+                showAlert('danger', 'Gagal menghubungi server. Silakan coba lagi.');
+            } finally {
+                btnRequest.disabled = false;
+                btnRequest.classList.remove('btn-disabled');
+                spinner.style.display = 'none';
+            }
+        });
+
+        // Verify OTP
+        document.getElementById('verifyOtpForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const identifier = document.getElementById('hiddenIdentifier').value;
+            const otp = document.getElementById('otpCode').value.trim();
+            const btnVerify = document.getElementById('btnVerifyOtp');
+            const spinner = document.getElementById('spinnerVerify');
+
+            if (!otp || otp.length !== 6) {
+                showAlert('warning', 'Kode OTP harus 6 digit!');
                 return;
             }
-            if (!/^\d+$/.test(otp)) {
-                showAlert('warning', "Kode OTP hanya boleh berisi angka.");
+
+            if (!/^\d{6}$/.test(otp)) {
+                showAlert('warning', 'Kode OTP hanya boleh berisi angka!');
                 return;
             }
 
             btnVerify.disabled = true;
             btnVerify.classList.add('btn-disabled');
             spinner.style.display = 'inline-block';
-            alertBox.classList.add('d-none');
+            hideAlert();
 
             try {
-                const response = await fetch('process/verify_otp.php', {
+                const response = await fetch('process/verify_otp_login.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
                     body: new URLSearchParams({
-                        email: email,
+                        identifier: identifier,
                         otp: otp
                     })
                 });
 
-                if (!response.ok) {
-                    throw new Error('Server error: ' + response.status);
-                }
-
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    const text = await response.text();
-                    console.error('Response bukan JSON:', text);
-                    throw new Error('Server mengembalikan response yang tidak valid.');
-                }
-
                 const result = await response.json();
 
                 if (result.success) {
-                    showAlert('success', "Verifikasi berhasil. Silakan login kembali.");
+                    showAlert('success', '✓ Login berhasil! Mengalihkan...');
+                    
                     setTimeout(() => {
-                        location.reload();
-                    }, 2000);
+                        window.location.href = result.redirect || 'home.php';
+                    }, 1500);
                 } else {
-                    showAlert('danger', result.message || "OTP salah atau sudah kedaluwarsa.");
+                    showAlert('danger', result.message);
                     document.getElementById('otpCode').value = '';
                     document.getElementById('otpCode').focus();
                 }
             } catch (err) {
                 console.error('Error:', err);
-                showAlert('danger', "Gagal verifikasi: " + err.message);
+                showAlert('danger', 'Gagal verifikasi. Silakan coba lagi.');
             } finally {
                 btnVerify.disabled = false;
                 btnVerify.classList.remove('btn-disabled');
@@ -254,75 +247,99 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
             }
         });
 
-        // Resend OTP
-        document.getElementById('resendOtpBtn').addEventListener('click', async () => {
-            const email = document.getElementById('otpEmail').value;
-            const btnResend = document.getElementById('resendOtpBtn');
+        // Back button
+        document.getElementById('btnBack').addEventListener('click', () => {
+            clearInterval(countdownInterval);
+            clearTimeout(resendTimeout);
+            
+            document.getElementById('verifyOtpForm').style.display = 'none';
+            document.getElementById('requestOtpForm').style.display = 'block';
+            document.getElementById('otpCode').value = '';
+            hideAlert();
+        });
 
+        // Resend OTP
+        document.getElementById('btnResend').addEventListener('click', async () => {
+            const identifier = document.getElementById('hiddenIdentifier').value;
+            const btnResend = document.getElementById('btnResend');
+            
             btnResend.disabled = true;
-            btnResend.textContent = 'Mengirim...';
+            hideAlert();
 
             try {
-                const response = await fetch('process/resend_otp.php', {
+                const response = await fetch('process/request_otp.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
-                    body: new URLSearchParams({
-                        email: email
-                    })
+                    body: new URLSearchParams({ identifier: identifier })
                 });
 
                 const result = await response.json();
 
                 if (result.success) {
-                    showAlert('success', "Kode OTP baru telah dikirim ke email Anda.");
-                    let countdown = 60;
-                    const interval = setInterval(() => {
-                        btnResend.textContent = `Kirim Ulang (${countdown}s)`;
-                        countdown--;
-                        if (countdown < 0) {
-                            clearInterval(interval);
-                            btnResend.disabled = false;
-                            btnResend.textContent = 'Kirim Ulang OTP';
-                        }
-                    }, 1000);
+                    showAlert('success', 'Kode OTP baru telah dikirim!');
+                    startCountdown(300);
+                    startResendTimer(60);
                 } else {
-                    showAlert('danger', result.message || "Gagal mengirim ulang OTP.");
+                    showAlert('danger', result.message);
                     btnResend.disabled = false;
-                    btnResend.textContent = 'Kirim Ulang OTP';
                 }
             } catch (err) {
-                console.error('Error:', err);
-                showAlert('danger', "Gagal mengirim ulang OTP.");
+                showAlert('danger', 'Gagal mengirim ulang OTP.');
                 btnResend.disabled = false;
-                btnResend.textContent = 'Kirim Ulang OTP';
             }
         });
 
-        // Helper function untuk menampilkan alert
+        // Countdown timer
+        function startCountdown(seconds) {
+            clearInterval(countdownInterval);
+            const countdownEl = document.getElementById('countdown');
+            
+            countdownInterval = setInterval(() => {
+                const minutes = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                countdownEl.textContent = `Kode berlaku: ${minutes}:${secs.toString().padStart(2, '0')}`;
+                
+                seconds--;
+                
+                if (seconds < 0) {
+                    clearInterval(countdownInterval);
+                    countdownEl.textContent = 'Kode OTP telah kedaluwarsa';
+                    countdownEl.style.color = '#d9534f';
+                }
+            }, 1000);
+        }
+
+        // Resend timer
+        function startResendTimer(seconds) {
+            const btnResend = document.getElementById('btnResend');
+            btnResend.disabled = true;
+            
+            clearTimeout(resendTimeout);
+            
+            resendTimeout = setTimeout(() => {
+                btnResend.disabled = false;
+            }, seconds * 1000);
+        }
+
+        // Alert functions
         function showAlert(type, message) {
-            const alertBox = document.getElementById('otpAlert');
-            alertBox.className = 'alert alert-' + type;
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = `alert alert-${type}`;
             alertBox.textContent = message;
             alertBox.classList.remove('d-none');
         }
 
-        // Enter key untuk OTP
-        document.getElementById('otpCode').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                document.getElementById('verifyOtpBtn').click();
-            }
-        });
+        function hideAlert() {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.classList.add('d-none');
+        }
 
-        // Autofocus OTP saat modal dibuka
-        document.getElementById('otpModal').addEventListener('shown.bs.modal', function() {
-            document.getElementById('otpCode').value = '';
-            document.getElementById('otpCode').focus();
-            document.getElementById('otpAlert').classList.add('d-none');
+        // Only allow numbers in OTP input
+        document.getElementById('otpCode').addEventListener('input', function() {
+            this.value = this.value.replace(/\D/g, '');
         });
     </script>
-
 </body>
 </html>

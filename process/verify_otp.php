@@ -1,87 +1,82 @@
 <?php
-header('Content-Type: application/json');
-require_once 'config_db.php';
+require_once '../process/config_db.php';
 
-function sendResponse($success, $message)
-{
-    echo json_encode([
-        'success' => $success,
-        'message' => $message
-    ]);
+header('Content-Type: application/json');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Method not allowed']);
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    sendResponse(false, 'Method tidak diizinkan');
-}
-
 try {
-    // Ambil data dari request
-    $email = trim($_POST['email'] ?? '');
+    $nik = trim($_POST['nik'] ?? '');
     $otp = trim($_POST['otp'] ?? '');
 
     // Validasi input
-    if (empty($email) || empty($otp)) {
-        sendResponse(false, 'Email dan OTP harus diisi!');
+    if (empty($nik)) {
+        throw new Exception("NIK tidak ditemukan.");
     }
 
-    // Validasi format OTP
-    if (strlen($otp) !== 6) {
-        sendResponse(false, 'Kode OTP harus 6 digit!');
+    if (empty($otp)) {
+        throw new Exception("Kode OTP wajib diisi.");
     }
 
-    if (!ctype_digit($otp)) {
-        sendResponse(false, 'Kode OTP hanya boleh berisi angka!');
+    if (!preg_match('/^\d{6}$/', $otp)) {
+        throw new Exception("Kode OTP harus 6 digit angka.");
     }
 
-    // Cari user dengan email dan OTP yang sesuai
+    // Ambil data user
     $stmt = $pdo->prepare("
-    SELECT NIK_NIP, nama_lengkap, otp, otp_expiry, is_verified 
-    FROM user 
-    WHERE email = ?
-  ");
-    $stmt->execute([$email]);
+        SELECT NIK_NIP, nama_lengkap, otp, otp_expiry, is_verified 
+        FROM user 
+        WHERE NIK_NIP = ?
+    ");
+    $stmt->execute([$nik]);
     $user = $stmt->fetch();
 
-    // Cek apakah sudah terverifikasi
-    if ($user['is_verified'] == 1) {
-        sendResponse(false, 'Akun Anda sudah terverifikasi. Silakan login.');
+    if (!$user) {
+        throw new Exception("Data registrasi tidak ditemukan.");
     }
 
-    // Cek apakah OTP sudah kedaluwarsa
+    if ($user['is_verified'] == 1) {
+        throw new Exception("Akun sudah terverifikasi. Silakan login.");
+    }
+
+    // Cek apakah OTP sudah expired
     $now = new DateTime();
     $expiry = new DateTime($user['otp_expiry']);
-
+    
     if ($now > $expiry) {
-        sendResponse(false, 'Kode OTP sudah kedaluwarsa! Silakan registrasi ulang atau hubungi administrator.');
+        throw new Exception("Kode OTP telah kedaluwarsa. Silakan daftar ulang.");
     }
 
-    // Cek apakah OTP cocok
-    if ($user['otp'] !== $otp) {
-        sendResponse(false, 'Kode OTP salah! Silakan periksa kembali kode yang dikirim ke email Anda.');
+    // Verifikasi OTP
+    if (!password_verify($otp, $user['otp'])) {
+        throw new Exception("Kode OTP salah. Silakan cek kembali WhatsApp Anda.");
     }
 
     // Update status verifikasi
     $stmt = $pdo->prepare("
-    UPDATE user 
-    SET is_verified = 1, otp = NULL, otp_expiry = NULL 
-    WHERE NIK_NIP = ?
-  ");
+        UPDATE user 
+        SET is_verified = 1, 
+            otp = NULL, 
+            otp_expiry = NULL,
+            updated_at = NOW()
+        WHERE NIK_NIP = ?
+    ");
+    $stmt->execute([$nik]);
 
-    if (!$stmt->execute([$user['NIK_NIP']])) {
-        sendResponse(false, 'Gagal memverifikasi akun! Silakan coba lagi.');
-    }
+    echo json_encode([
+        'success' => true,
+        'message' => 'Verifikasi berhasil! Akun Anda telah aktif.',
+        'nama' => $user['nama_lengkap']
+    ]);
 
-    // Log aktivitas (opsional)
-    error_log("User verified successfully: " . $email);
-
-    sendResponse(true, 'Verifikasi berhasil! Akun Anda telah aktif. Anda akan dialihkan ke halaman login...');
 } catch (Exception $e) {
     error_log("OTP Verification error: " . $e->getMessage());
-    sendResponse(false, 'Terjadi kesalahan sistem: ' . $e->getMessage());
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage()
+    ]);
 }
-if (!$user) {
-    sendResponse(false, 'Email tidak ditemukan dalam sistem!');
-}
-
-  // Cek apakah user ditemukan

@@ -135,11 +135,6 @@ if (!$user) {
                 </div>
 
                 <div class="mb-3">
-                    <label for="password" class="form-label">Password</label>
-                    <input type="password" class="form-control" name="password" id="password" placeholder="Kosongkan jika tidak ingin mengubah">
-                </div>
-
-                <div class="mb-3">
                     <label for="fileKTP" class="form-label">Upload KTP (opsional)</label>
                     <input type="file" id="fileKTP" name="fileKTP" accept=".pdf,.jpg,.jpeg,.png" class="form-control">
                     
