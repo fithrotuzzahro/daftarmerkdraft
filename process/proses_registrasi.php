@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 try {
     // Validasi input
-    $required_fields = ['namaPemilik', 'nik', 'rt_rw', 'kel_desa', 'kecamatan', 'telepon', 'email'];
+    $required_fields = ['namaPemilik', 'nik', 'rt_rw', 'provinsi', 'kabupaten', 'kecamatan', 'kel_desa', 'telepon', 'email'];
     foreach ($required_fields as $field) {
         if (empty($_POST[$field])) {
             throw new Exception("Field $field wajib diisi.");
@@ -21,8 +21,10 @@ try {
     $namaPemilik = trim($_POST['namaPemilik']);
     $nik = trim($_POST['nik']);
     $rt_rw = trim($_POST['rt_rw']);
-    $kel_desa = trim($_POST['kel_desa']);
+    $provinsi = trim($_POST['provinsi']);
+    $kabupaten = trim($_POST['kabupaten']);
     $kecamatan = trim($_POST['kecamatan']);
+    $kel_desa = trim($_POST['kel_desa']);
     $telepon = trim($_POST['telepon']);
     $email = trim($_POST['email']);
 
@@ -36,15 +38,60 @@ try {
         throw new Exception("Format RT/RW tidak valid. Contoh: 002/006");
     }
 
-    // Validasi nomor telepon
-    if (!preg_match('/^08\d{8,11}$/', $telepon)) {
-        throw new Exception("Nomor WhatsApp tidak valid. Harus dimulai dengan 08 dan 10-13 digit.");
+    // Validasi dan normalisasi nomor telepon ke format 62
+    if (!preg_match('/^62\d{9,13}$/', $telepon)) {
+        throw new Exception("Nomor WhatsApp tidak valid. Harus dimulai dengan 62 dan total 11-15 digit.");
     }
+    
+    // Pastikan nomor dalam format 62xxx (sudah pasti dari validasi di atas)
+    // Tidak perlu konversi karena input sudah format 62
 
     // Validasi email
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         throw new Exception("Format email tidak valid.");
     }
+
+    // Validasi kode wilayah ada di database
+    $stmt = $pdo->prepare("SELECT kode FROM wilayah WHERE kode = ?");
+    
+    // Cek provinsi
+    $stmt->execute([$provinsi]);
+    if (!$stmt->fetch()) {
+        throw new Exception("Kode provinsi tidak valid.");
+    }
+    
+    // Cek kabupaten
+    $stmt->execute([$kabupaten]);
+    if (!$stmt->fetch()) {
+        throw new Exception("Kode kabupaten tidak valid.");
+    }
+    
+    // Cek kecamatan
+    $stmt->execute([$kecamatan]);
+    if (!$stmt->fetch()) {
+        throw new Exception("Kode kecamatan tidak valid.");
+    }
+    
+    // Cek desa
+    $stmt->execute([$kel_desa]);
+    if (!$stmt->fetch()) {
+        throw new Exception("Kode desa tidak valid.");
+    }
+
+    // Ambil nama wilayah untuk disimpan
+    $stmt = $pdo->prepare("SELECT nama FROM wilayah WHERE kode = ?");
+    
+    $stmt->execute([$provinsi]);
+    $nama_provinsi = $stmt->fetchColumn();
+    
+    $stmt->execute([$kabupaten]);
+    $nama_kabupaten = $stmt->fetchColumn();
+    
+    $stmt->execute([$kecamatan]);
+    $nama_kecamatan = $stmt->fetchColumn();
+    
+    $stmt->execute([$kel_desa]);
+    $nama_desa = $stmt->fetchColumn();
 
     // Validasi file KTP
     if (!isset($_FILES['fileKTP']) || $_FILES['fileKTP']['error'] !== UPLOAD_ERR_OK) {
@@ -98,20 +145,31 @@ try {
         throw new Exception("Gagal mengupload file KTP.");
     }
 
-    // Simpan data user - LANGSUNG VERIFIED tanpa password
+    // Simpan data user dengan kode dan nama wilayah
     $stmt = $pdo->prepare("
         INSERT INTO user (
-            NIK_NIP, nama_lengkap, no_wa, kel_desa, kecamatan, rt_rw, 
+            NIK_NIP, nama_lengkap, no_wa, 
+            kode_provinsi, nama_provinsi,
+            kode_kabupaten, nama_kabupaten,
+            kode_kecamatan, kecamatan,
+            kode_kel_desa, kel_desa,
+            rt_rw, 
             email, foto_ktp, is_verified, role, tanggal_buat
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'Pemohon', NOW())
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Pemohon', NOW())
     ");
 
     $stmt->execute([
         $nik,
         $namaPemilik,
         $telepon,
-        $kel_desa,
+        $provinsi,
+        $nama_provinsi,
+        $kabupaten,
+        $nama_kabupaten,
         $kecamatan,
+        $nama_kecamatan,
+        $kel_desa,
+        $nama_desa,
         $rt_rw,
         $email,
         'uploads/ktp/' . $new_filename
@@ -131,3 +189,4 @@ try {
         'message' => $e->getMessage()
     ]);
 }
+?>

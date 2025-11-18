@@ -13,7 +13,7 @@ if (!isset($_SESSION['NIK_NIP'])) {
 $NIK = $_SESSION['NIK_NIP'];
 $nama = $_SESSION['nama_lengkap'];
 
-// ===== HANDLER AJAX REQUEST =====
+// HANDLER AJAX REQUEST
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
   header('Content-Type: application/json');
 
@@ -98,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
           $stmt = $pdo->prepare("INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path) VALUES (?, 4, ?, ?)");
           $stmt->execute([$id_pendaftaran, $tgl_upload, $target]);
 
-          // ===== PENTING: UBAH STATUS SAAT PEMOHON UPLOAD =====
+          // UBAH STATUS SAAT PEMOHON UPLOAD
           $stmt = $pdo->prepare("UPDATE pendaftaran SET status_validasi = 'Menunggu Bukti Pendaftaran' WHERE id_pendaftaran = ?");
           $stmt->execute([$id_pendaftaran]);
 
@@ -124,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
   }
 }
 
-// ===== AMBIL DATA PENDAFTARAN =====
+// AMBIL DATA PENDAFTARAN
 try {
   $stmt = $pdo->prepare("
         SELECT p.*, 
@@ -332,7 +332,6 @@ try {
       border-width: 2px !important;
     }
 
-    /* Button Download Styling */
     .btn-dark,
     .btn-success {
       transition: all 0.3s ease;
@@ -347,7 +346,6 @@ try {
       background-color: #157347;
     }
 
-    /* Alert Styling */
     .alert {
       border-radius: 8px;
     }
@@ -438,7 +436,6 @@ try {
                 <?php elseif ($statusKey === 'melengkapisurat'): ?>
                   <p class="m-0 mb-4"><?php echo htmlspecialchars($data['desc']); ?></p>
 
-                  <!-- TAMPILAN BARU SEPERTI GAMBAR KEDUA -->
                   <div class="step-card">
                     <div class="step-header">
                       <i class="fa-solid fa-clipboard-list" style="font-size: 1.5rem;"></i>
@@ -540,7 +537,7 @@ try {
                       <div class="card border-primary">
                         <div class="card-body">
                           <h6 class="fw-bold mb-3">
-                            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
+                            <i class="fa-solid fa-file me-2 text-danger"></i>
                             Surat Keterangan IKM
                           </h6>
                           <?php if ($suratKeteranganIKM && file_exists($suratKeteranganIKM)): ?>
@@ -567,7 +564,7 @@ try {
                       <div class="card border-success">
                         <div class="card-body">
                           <h6 class="fw-bold mb-3">
-                            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
+                            <i class="fa-solid fa-file-circle-check me-2 text-danger"></i>
                             Bukti Pendaftaran
                           </h6>
                           <?php if ($buktiPendaftaran && file_exists($buktiPendaftaran)): ?>
@@ -604,7 +601,7 @@ try {
                       <div class="card border-primary h-100">
                         <div class="card-body d-flex flex-column">
                           <h6 class="fw-bold mb-3">
-                            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
+                            <i class="fa-solid fa-file me-2 text-danger"></i>
                             Surat Keterangan IKM
                           </h6>
                           <?php if ($suratKeteranganIKM && file_exists($suratKeteranganIKM)): ?>
@@ -632,7 +629,7 @@ try {
                       <div class="card border-success h-100">
                         <div class="card-body d-flex flex-column">
                           <h6 class="fw-bold mb-3">
-                            <i class="fa-solid fa-file-pdf me-2 text-danger"></i>
+                            <i class="fa-solid fa-file-circle-check me-2 text-danger"></i>
                             Bukti Pendaftaran
                           </h6>
                           <?php if ($buktiPendaftaran && file_exists($buktiPendaftaran)): ?>
@@ -997,7 +994,7 @@ try {
                   <p class="m-0"><?php echo htmlspecialchars($data['desc']); ?></p>
                 <?php endif; ?>
 
-                <!-- ===== SECTION DOKUMEN YANG TERSEDIA ===== -->
+                <!-- SECTION DOKUMEN YANG TERSEDIA -->
                 <?php
                 // Cek dokumen mana saja yang tersedia
                 $ada_dokumen = false;
@@ -1366,11 +1363,82 @@ try {
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
+    // BOOTSTRAP ALERT & CONFIRM MODALS
+
+    function showAlert(message, type = 'warning') {
+      const icon = type === 'danger' ? '❌' : type === 'success' ? '✅' : '⚠️';
+
+      const alertModal = `
+    <div class="modal fade" id="alertModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+          <div class="modal-body text-center p-4">
+            <div class="fs-1 mb-3">${icon}</div>
+            <p class="mb-0">${message}</p>
+          </div>
+          <div class="modal-footer border-0 justify-content-center">
+            <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+      const existingModal = document.getElementById('alertModal');
+      if (existingModal) existingModal.remove();
+
+      document.body.insertAdjacentHTML('beforeend', alertModal);
+      const modal = new bootstrap.Modal(document.getElementById('alertModal'));
+      modal.show();
+
+      document.getElementById('alertModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+      });
+    }
+
+    function showConfirm(message, onConfirm, onCancel = null) {
+      const confirmModal = `
+    <div class="modal fade" id="confirmModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-body text-center p-4">
+            <div class="fs-1 mb-3">⚠️</div>
+            <p class="mb-0">${message.replace(/\n/g, '<br>')}</p>
+          </div>
+          <div class="modal-footer border-0 justify-content-center gap-2">
+            <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal" id="btnModalCancel">Batal</button>
+            <button type="button" class="btn btn-primary px-4" id="btnModalConfirm">Ya, Lanjutkan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+      const existingModal = document.getElementById('confirmModal');
+      if (existingModal) existingModal.remove();
+
+      document.body.insertAdjacentHTML('beforeend', confirmModal);
+      const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+      modal.show();
+
+      document.getElementById('btnModalConfirm').addEventListener('click', function() {
+        modal.hide();
+        if (onConfirm) onConfirm();
+      });
+
+      document.getElementById('btnModalCancel').addEventListener('click', function() {
+        if (onCancel) onCancel();
+      });
+
+      document.getElementById('confirmModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+      });
+    }
     // Handler untuk tombol Lanjut (Konfirmasi Lanjut)
     const btnLanjut = document.getElementById('btnLanjut');
     if (btnLanjut) {
       btnLanjut.addEventListener('click', function() {
-        if (confirm('Apakah Anda yakin ingin melanjutkan dengan Merek Alternatif <?php echo $pendaftaran['merek_difasilitasi'] ?? '2'; ?>?')) {
+        showConfirm('Apakah Anda yakin ingin melanjutkan dengan Merek Alternatif <?php echo $pendaftaran['merek_difasilitasi'] ?? '2'; ?>?', function() {
           btnLanjut.disabled = true;
           btnLanjut.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Memproses...';
 
@@ -1385,21 +1453,21 @@ try {
             .then(response => response.json())
             .then(data => {
               if (data.success) {
-                alert('Konfirmasi berhasil! Status diperbarui ke Surat Keterangan Difasilitasi. Silakan download dan upload surat yang sudah ditandatangani.');
-                location.reload();
+                showAlert('Konfirmasi berhasil! Status diperbarui ke Surat Keterangan Difasilitasi. Silakan download dan upload surat yang sudah ditandatangani.', 'success');
+                setTimeout(() => location.reload(), 2000);
               } else {
-                alert('Terjadi kesalahan: ' + data.message);
+                showAlert('Terjadi kesalahan: ' + data.message, 'danger');
                 btnLanjut.disabled = false;
                 btnLanjut.innerHTML = 'Lanjut';
               }
             })
             .catch(error => {
               console.error('Error:', error);
-              alert('Terjadi kesalahan saat mengirim konfirmasi.');
+              showAlert('Terjadi kesalahan saat mengirim konfirmasi.', 'danger');
               btnLanjut.disabled = false;
               btnLanjut.innerHTML = 'Lanjut';
             });
-        }
+        });
       });
     }
 
@@ -1413,57 +1481,55 @@ try {
         const btnKirim = document.getElementById('btnKirimSurat');
 
         if (!fileInput.files[0]) {
-          alert('Silakan pilih file terlebih dahulu!');
+          showAlert('Silakan pilih file terlebih dahulu!');
           return;
         }
 
         // Validasi ukuran file (max 5MB)
         if (fileInput.files[0].size > 5 * 1024 * 1024) {
-          alert('Ukuran file maksimal 5MB!');
+          showAlert('Ukuran file maksimal 5MB!');
           return;
         }
 
         // Validasi format file
         const allowedExtensions = /(\.pdf)$/i;
         if (!allowedExtensions.exec(fileInput.files[0].name)) {
-          alert('Format file harus PDF!');
+          showAlert('Format file harus PDF!');
           return;
         }
 
-        if (!confirm('Apakah Anda yakin ingin mengirim surat ini? Status akan berubah menjadi "Menunggu Bukti Pendaftaran".')) {
-          return;
-        }
+        showConfirm('Apakah Anda yakin ingin mengirim surat ini?<br><br>Status akan berubah menjadi "Menunggu Bukti Pendaftaran".', function() {
+          const formData = new FormData();
+          formData.append('ajax_action', 'upload_surat');
+          formData.append('fileSurat', fileInput.files[0]);
+          formData.append('id_pendaftaran', <?php echo $pendaftaran['id_pendaftaran']; ?>);
 
-        const formData = new FormData();
-        formData.append('ajax_action', 'upload_surat');
-        formData.append('fileSurat', fileInput.files[0]);
-        formData.append('id_pendaftaran', <?php echo $pendaftaran['id_pendaftaran']; ?>);
+          // Disable button dan tampilkan loading
+          btnKirim.disabled = true;
+          btnKirim.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Mengirim...';
 
-        // Disable button dan tampilkan loading
-        btnKirim.disabled = true;
-        btnKirim.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Mengirim...';
-
-        fetch(window.location.href, {
-            method: 'POST',
-            body: formData
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              alert('Surat berhasil dikirim! Status diperbarui ke Menunggu Bukti Pendaftaran. Admin sekarang dapat melihat surat Anda.');
-              location.reload();
-            } else {
-              alert('Gagal mengirim surat: ' + data.message);
+          fetch(window.location.href, {
+              method: 'POST',
+              body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                showAlert('Surat berhasil dikirim! Status diperbarui ke Menunggu Bukti Pendaftaran. Admin sekarang dapat melihat surat Anda.', 'success');
+                setTimeout(() => location.reload(), 2000);
+              } else {
+                showAlert('Gagal mengirim surat: ' + data.message, 'danger');
+                btnKirim.disabled = false;
+                btnKirim.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Kirim Surat';
+              }
+            })
+            .catch(error => {
+              console.error('Error:', error);
+              showAlert('Terjadi kesalahan saat mengirim file.', 'danger');
               btnKirim.disabled = false;
               btnKirim.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Kirim Surat';
-            }
-          })
-          .catch(error => {
-            console.error('Error:', error);
-            alert('Terjadi kesalahan saat mengirim file.');
-            btnKirim.disabled = false;
-            btnKirim.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Kirim Surat';
-          });
+            });
+        });
       });
     }
 
@@ -1531,7 +1597,7 @@ try {
       document.getElementById('modalImage').src = '';
     });
 
-    // ===== PREVIEW FILE DALAM BENTUK ICON UNTUK STEP 3 UPLOAD SURAT =====
+    // PREVIEW FILE DALAM BENTUK ICON UNTUK STEP 3 UPLOAD SURAT 
     document.addEventListener('DOMContentLoaded', function() {
       const fileInput = document.getElementById('fileSurat');
       const filePreview = document.getElementById('filePreview');
@@ -1559,7 +1625,7 @@ try {
 
           // Validasi ukuran file
           if (file.size > 5 * 1024 * 1024) {
-            alert('Ukuran file maksimal 5MB!');
+            showAlert('Ukuran file maksimal 5MB!');
             fileInput.value = '';
             filePreview.style.display = 'none';
             return;
@@ -1568,7 +1634,7 @@ try {
           // Validasi tipe file
           const allowedTypes = ['application/pdf'];
           if (!allowedTypes.includes(file.type)) {
-            alert('Format file harus PDF!');
+            showAlert('Format file harus PDF!');
             fileInput.value = '';
             filePreview.style.display = 'none';
             return;
@@ -1589,7 +1655,7 @@ try {
 
           reader.onerror = function() {
             console.error('Error reading file');
-            alert('Error membaca file. Silakan coba file lain.');
+            showAlert('Error membaca file. Silakan coba file lain.');
           };
 
           reader.readAsDataURL(file);
@@ -1638,7 +1704,7 @@ try {
           if (currentFileData && currentFileName && currentFileType) {
             showFullPreview(currentFileData, currentFileName, currentFileType);
           } else {
-            alert('File belum siap untuk dilihat. Silakan tunggu sebentar.');
+            showAlert('File belum siap untuk dilihat. Silakan tunggu sebentar.');
           }
         });
 

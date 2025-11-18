@@ -673,3 +673,60 @@ body {
   overflow: auto !important;
   padding-right: 0 !important;
 }
+
+/* Tambahkan di form-pendaftaran.css */
+
+/* Legalitas File List Table */
+#legalitasFileList .table {
+    font-size: 13px;
+    margin-bottom: 0;
+}
+
+#legalitasFileList .table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    padding: 0.75rem 0.5rem;
+    vertical-align: middle;
+}
+
+#legalitasFileList .table td {
+    padding: 0.5rem;
+    vertical-align: middle;
+}
+
+#legalitasFileList .table td small {
+    font-size: 12px;
+    word-break: break-word;
+}
+
+#legalitasFileList .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+#legalitasFileList .form-select-sm {
+    font-size: 12px;
+    padding: 0.375rem 0.5rem;
+}
+
+/* Responsive untuk mobile */
+@media (max-width: 768px) {
+    #legalitasFileList .table-responsive {
+        font-size: 11px;
+    }
+    
+    #legalitasFileList .table th,
+    #legalitasFileList .table td {
+        padding: 0.4rem 0.3rem;
+    }
+    
+    #legalitasFileList .form-select-sm {
+        font-size: 11px;
+        padding: 0.25rem 0.35rem;
+    }
+    
+    #legalitasFileList .btn-sm {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.7rem;
+    }
+}

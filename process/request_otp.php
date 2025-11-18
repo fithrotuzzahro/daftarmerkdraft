@@ -25,19 +25,19 @@ try {
         $stmt->execute([$identifier]);
     } else {
         // Cari user berdasarkan nomor WA
-        // Normalize nomor (08xxx atau 62xxx)
         $phone = preg_replace('/\D/', '', $identifier);
+        
+        // Konversi semua ke format 62xxx
         if (substr($phone, 0, 1) == '0') {
-            $phone = '62' . substr($phone, 1);
-        } elseif (substr($phone, 0, 2) != '62') {
-            $phone = '62' . $phone;
+            $phone_normalized = '62' . substr($phone, 1);
+        } elseif (substr($phone, 0, 2) == '62') {
+            $phone_normalized = $phone;
+        } else {
+            $phone_normalized = '62' . $phone;
         }
         
-        // Cari dengan format 08xxx
-        $phone_08 = '0' . substr($phone, 2);
-        
         $stmt = $pdo->prepare("SELECT NIK_NIP, nama_lengkap, email, no_wa FROM user WHERE no_wa = ?");
-        $stmt->execute([$phone_08]);
+        $stmt->execute([$phone_normalized]);
     }
 
     $user = $stmt->fetch();
@@ -58,7 +58,7 @@ try {
     $stmt->execute([$otp_hashed, $otp_expiry, $user['NIK_NIP']]);
 
     // Kirim OTP via WhatsApp
-    $nomor_wa = '62' . substr($user['no_wa'], 1); // Convert 08xxx menjadi 62xxx
+    $nomor_wa = $user['no_wa'];
     
     $message = "*🔐 Kode Login Anda*\n\n";
     $message .= "Halo *{$user['nama_lengkap']}*,\n\n";
@@ -81,7 +81,7 @@ try {
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => http_build_query($data),
         CURLOPT_HTTPHEADER => [
-            "Authorization: RVwjvMqkCEySULGE92BM" // Ganti dengan token Fonnte Anda
+            "Authorization: RVwjvMqkCEySULGE92BM" 
         ],
         CURLOPT_SSL_VERIFYHOST => 0,
         CURLOPT_SSL_VERIFYPEER => 0
@@ -96,8 +96,8 @@ try {
         // Log error tapi tetap lanjut (bisa fallback ke email jika perlu)
     }
 
-    // Mask nomor untuk keamanan (misal: 0812****7890)
-    $masked_phone = substr($user['no_wa'], 0, 4) . '****' . substr($user['no_wa'], -4);
+    // Mask nomor untuk keamanan
+    $masked_phone = substr($user['no_wa'], 0, 5) . '****' . substr($user['no_wa'], -4);
 
     echo json_encode([
         'success' => true,
@@ -112,3 +112,4 @@ try {
         'message' => $e->getMessage()
     ]);
 }
+?>

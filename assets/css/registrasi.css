@@ -10,6 +10,11 @@ body {
     background-color: #B8B8B8;
 }
 
+body.modal-open {
+  overflow: auto !important;
+  padding-right: 0 !important;
+}
+
 section {
     scroll-margin-top: 50px;
 }

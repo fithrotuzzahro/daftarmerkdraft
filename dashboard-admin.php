@@ -7,20 +7,29 @@ date_default_timezone_set('Asia/Jakarta');
 include 'process/config_db.php';
 
 // Fungsi format tanggal Indonesia
-function formatTanggalIndonesia($tanggal) {
+function formatTanggalIndonesia($tanggal)
+{
     $bulan = array(
-        1 => 'Januari', 2 => 'Februari', 3 => 'Maret',
-        4 => 'April', 5 => 'Mei', 6 => 'Juni',
-        7 => 'Juli', 8 => 'Agustus', 9 => 'September',
-        10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+        1 => 'Januari',
+        2 => 'Februari',
+        3 => 'Maret',
+        4 => 'April',
+        5 => 'Mei',
+        6 => 'Juni',
+        7 => 'Juli',
+        8 => 'Agustus',
+        9 => 'September',
+        10 => 'Oktober',
+        11 => 'November',
+        12 => 'Desember'
     );
-    
+
     $timestamp = strtotime($tanggal);
     $tgl = date('d', $timestamp);
     $bln = $bulan[date('n', $timestamp)];
     $thn = date('Y', $timestamp);
     $jam = date('H:i', $timestamp);
-    
+
     return $tgl . ' ' . $bln . ' ' . $thn . ', ' . $jam;
 }
 
@@ -28,6 +37,17 @@ function formatTanggalIndonesia($tanggal) {
 if (!isset($_SESSION['NIK_NIP']) || $_SESSION['role'] != 'Admin') {
     header("Location: login.php");
     exit;
+}
+// Ambil daftar tahun yang tersedia di database
+try {
+    $stmt_tahun = $pdo->query("SELECT DISTINCT YEAR(tgl_daftar) as tahun 
+                                FROM pendaftaran 
+                                WHERE tgl_daftar IS NOT NULL 
+                                ORDER BY tahun DESC");
+    $tahun_list = $stmt_tahun->fetchAll(PDO::FETCH_COLUMN);
+} catch (PDOException $e) {
+    error_log("Error get tahun: " . $e->getMessage());
+    $tahun_list = [];
 }
 
 // Ambil filter dari URL
@@ -38,20 +58,20 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 // Query untuk statistik
 try {
     $total_kuota = 100;
-    
+
     $kuota_statuses = [
         'Surat Keterangan Difasilitasi',
-        'Menunggu Bukti Pendaftaran', 
+        'Menunggu Bukti Pendaftaran',
         'Bukti Pendaftaran Terbit dan Diajukan ke Kementerian',
         'Hasil Verifikasi Kementerian'
     ];
-    
+
     $placeholders = str_repeat('?,', count($kuota_statuses) - 1) . '?';
     $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM pendaftaran WHERE status_validasi IN ($placeholders)");
     $stmt->execute($kuota_statuses);
     $total_pendaftar = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
     $kuota_tersedia = $total_kuota - $total_pendaftar;
-    
+
     // Hitung berdasarkan status - UPDATE nama status
     $stats = [
         'Pengecekan Berkas' => 0,
@@ -62,17 +82,16 @@ try {
         'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' => 0,
         'Hasil Verifikasi Kementerian' => 0
     ];
-    
+
     $stmt = $pdo->query("SELECT status_validasi, COUNT(*) as jumlah FROM pendaftaran GROUP BY status_validasi");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $status = $row['status_validasi'];
         $jumlah = $row['jumlah'];
-        
+
         if (isset($stats[$status])) {
             $stats[$status] = $jumlah;
         }
     }
-
 } catch (PDOException $e) {
     error_log("Error statistik: " . $e->getMessage());
     $kuota_tersedia = $total_kuota;
@@ -91,38 +110,37 @@ try {
             FROM pendaftaran p
             INNER JOIN user u ON p.NIK = u.NIK_NIP
             WHERE 1=1";
-    
+
     $params = [];
-    
+
     if (!empty($filter_tahun)) {
         $sql .= " AND YEAR(p.tgl_daftar) = ?";
         $params[] = $filter_tahun;
     }
-    
+
     if (!empty($filter_status)) {
         $sql .= " AND p.status_validasi = ?";
         $params[] = $filter_status;
     }
-    
+
     if (!empty($search)) {
         $sql .= " AND u.nama_lengkap LIKE ?";
         $params[] = "%$search%";
     }
-    
+
     $count_sql = "SELECT COUNT(*) as total FROM ($sql) as subquery";
     $count_stmt = $pdo->prepare($count_sql);
     $count_stmt->execute($params);
     $total_records = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];
     $total_pages = ceil($total_records / $limit);
-    
+
     $sql .= " ORDER BY p.tgl_daftar DESC LIMIT ? OFFSET ?";
     $params[] = $limit;
     $params[] = $offset;
-    
+
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $pendaftaran_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
 } catch (PDOException $e) {
     error_log("Error query pendaftaran: " . $e->getMessage());
     $pendaftaran_list = [];
@@ -130,21 +148,23 @@ try {
 }
 
 // PERUBAHAN: Function untuk badge status - UPDATE warna badge
-function getBadgeClass($status) {
+function getBadgeClass($status)
+{
     $badges = [
         'Pengecekan Berkas' => 'scan',
         'Tidak Bisa Difasilitasi' => 'dangerish',
-        'Konfirmasi Lanjut' => 'violet',         
+        'Konfirmasi Lanjut' => 'violet',
         'Surat Keterangan Difasilitasi' => 'infoish',
-        'Menunggu Bukti Pendaftaran' => 'emerald',   
+        'Menunggu Bukti Pendaftaran' => 'emerald',
         'Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian' => 'yellow',
-        'Hasil Verifikasi Kementerian' => 'mint' 
+        'Hasil Verifikasi Kementerian' => 'mint'
     ];
     return $badges[$status] ?? 'secondary';
 }
 
 // Function untuk display text status - UPDATE label
-function getDisplayStatus($status) {
+function getDisplayStatus($status)
+{
     $displayText = [
         'Pengecekan Berkas' => 'BERKAS BARU',
         'Tidak Bisa Difasilitasi' => 'TIDAK BISA DIFASILITASI',
@@ -174,26 +194,32 @@ function getDisplayStatus($status) {
             background-color: #4a5568 !important;
             color: #fff !important;
         }
+
         .badge.text-bg-dangerish {
             background-color: #dc3545 !important;
             color: #fff !important;
         }
+
         .badge.text-bg-violet {
             background-color: #5b21b6 !important;
             color: #fff !important;
         }
+
         .badge.text-bg-infoish {
             background-color: #0891b2 !important;
             color: #fff !important;
         }
+
         .badge.text-bg-emerald {
             background-color: #047857 !important;
             color: #fff !important;
         }
+
         .badge.text-bg-yellow {
             background-color: #ca8a04 !important;
             color: #fff !important;
         }
+
         .badge.text-bg-mint {
             background-color: #059669 !important;
             color: #fff !important;
@@ -282,7 +308,7 @@ function getDisplayStatus($status) {
                     </div>
                 </div>
 
-                 <div class="col">
+                <div class="col">
                     <div class="card stat-card bg-mint h-100">
                         <div class="card-body">
                             <div class="stat-title">Hasil Verifikasi Kementerian</div>
@@ -321,9 +347,15 @@ function getDisplayStatus($status) {
                             <label class="form-label small mb-1">Berdasarkan Tahun</label>
                             <select name="tahun" class="form-select form-select-sm" onchange="this.form.submit()">
                                 <option value="">Semua</option>
-                                <option value="2025" <?php echo $filter_tahun == '2025' ? 'selected' : ''; ?>>2025</option>
-                                <option value="2024" <?php echo $filter_tahun == '2024' ? 'selected' : ''; ?>>2024</option>
-                                <option value="2023" <?php echo $filter_tahun == '2023' ? 'selected' : ''; ?>>2023</option>
+                                <?php foreach ($tahun_list as $tahun): ?>
+                                    <option value="<?php echo $tahun; ?>" <?php echo $filter_tahun == $tahun ? 'selected' : ''; ?>>
+                                        <?php echo $tahun; ?>
+                                    </option>
+                                <?php endforeach; ?>
+
+                                <?php if (empty($tahun_list)): ?>
+                                    <option disabled>Tidak ada data</option>
+                                <?php endif; ?>
                             </select>
                         </div>
                         <div class="col-auto">
@@ -414,7 +446,7 @@ function getDisplayStatus($status) {
                                     <span>&laquo;</span>
                                 </a>
                             </li>
-                            
+
                             <?php for ($i = 1; $i <= $total_pages; $i++): ?>
                                 <?php if ($i == 1 || $i == $total_pages || ($i >= $page - 1 && $i <= $page + 1)): ?>
                                     <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
@@ -426,7 +458,7 @@ function getDisplayStatus($status) {
                                     <li class="page-item disabled"><span class="page-link">...</span></li>
                                 <?php endif; ?>
                             <?php endfor; ?>
-                            
+
                             <li class="page-item <?php echo $page >= $total_pages ? 'disabled' : ''; ?>">
                                 <a class="page-link" href="?page=<?php echo $page + 1; ?>&tahun=<?php echo $filter_tahun; ?>&status=<?php echo $filter_status; ?>&search=<?php echo $search; ?>">
                                     <span>&raquo;</span>
@@ -454,16 +486,81 @@ function getDisplayStatus($status) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Bootstrap Alert Modal
+        function showAlert(message, type = 'warning') {
+            const icon = type === 'danger' ? '❌' : type === 'success' ? '✅' : '⚠️';
+
+            const alertModal = `
+            <div class="modal fade" id="alertModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered modal-sm">
+                    <div class="modal-content">
+                        <div class="modal-body text-center p-4">
+                            <div class="fs-1 mb-3">${icon}</div>
+                            <p class="mb-0">${message}</p>
+                        </div>
+                        <div class="modal-footer border-0 justify-content-center">
+                            <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+            const existingModal = document.getElementById('alertModal');
+            if (existingModal) existingModal.remove();
+
+            document.body.insertAdjacentHTML('beforeend', alertModal);
+            const modal = new bootstrap.Modal(document.getElementById('alertModal'));
+            modal.show();
+
+            document.getElementById('alertModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
+        }
+
+        // Konfirmasi hapus dengan modal
+        function confirmDelete(id) {
+            const confirmModal = `
+            <div class="modal fade" id="confirmDeleteModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-body text-center p-4">
+                            <div class="fs-1 mb-3">⚠️</div>
+                            <h5 class="mb-3">Konfirmasi Hapus</h5>
+                            <p class="mb-0">Apakah Anda yakin ingin menghapus data pendaftaran ini?</p>
+                        </div>
+                        <div class="modal-footer border-0 justify-content-center gap-2">
+                            <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Batal</button>
+                            <button type="button" class="btn btn-danger px-4" id="confirmDeleteAction">
+                                <i class="bi bi-trash me-1"></i> Hapus
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+            const existingModal = document.getElementById('confirmDeleteModal');
+            if (existingModal) existingModal.remove();
+
+            document.body.insertAdjacentHTML('beforeend', confirmModal);
+            const modal = new bootstrap.Modal(document.getElementById('confirmDeleteModal'));
+            modal.show();
+
+            document.getElementById('confirmDeleteAction').addEventListener('click', function() {
+                window.location.href = 'process/delete_pendaftaran.php?id=' + id;
+            });
+
+            document.getElementById('confirmDeleteModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
+        }
+
+        // Check All functionality
         document.getElementById('checkAll').addEventListener('change', function() {
             const checkboxes = document.querySelectorAll('.row-checkbox');
             checkboxes.forEach(checkbox => checkbox.checked = this.checked);
         });
-
-        function confirmDelete(id) {
-            if (confirm('Apakah Anda yakin ingin menghapus data pendaftaran ini?')) {
-                window.location.href = 'process/delete_pendaftaran.php?id=' + id;
-            }
-        }
     </script>
 </body>
 

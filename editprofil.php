@@ -4,7 +4,6 @@ require_once 'process/config_db.php';
 
 // Cek apakah user sudah login
 if (!isset($_SESSION['NIK_NIP'])) {
-    // Jika belum login, arahkan ke login.php
     header("Location: login.php");
     exit();
 }
@@ -17,13 +16,10 @@ $stmt->execute([$user_nik]);
 $user = $stmt->fetch();
 
 if (!$user) {
-    // Jika data user tidak ditemukan di database
     echo "Data user tidak ditemukan.";
     exit;
 }
 ?>
-
-
 
 <!DOCTYPE html>
 <html lang="id">
@@ -34,6 +30,8 @@ if (!$user) {
     <title>Edit Profil Pemohon - Disperindag Sidoarjo</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css">
     <link rel="stylesheet" href="assets/css/registrasi.css">
     <style>
         .preview-container {
@@ -89,49 +87,72 @@ if (!$user) {
     <!-- Navbar -->
     <?php include 'navbar-login.php' ?>
 
-    <!-- Registrasti Section -->
+    <!-- Edit Profil Section -->
     <section class="hero-section">
         <div class="registration-card">
             <h2>Edit Profil - Pemohon</h2>
             <form id="editProfilForm" method="post" enctype="multipart/form-data">
                 <div class="mb-3">
                     <label for="namaPemilik" class="form-label">Nama Pemilik</label>
-                    <input type="text" name="namaPemilik" class="form-control" id="namaPemilik" value="<?= htmlspecialchars($user['nama_lengkap']); ?>">
+                    <input type="text" name="namaPemilik" class="form-control" id="namaPemilik" value="<?= htmlspecialchars($user['nama_lengkap']); ?>" required>
                 </div>
 
                 <div class="mb-3">
                     <label for="nik" class="form-label">NIK</label>
-                    <input type="text" name="NIK_NIP" class="form-control" id="nik" value="<?= htmlspecialchars($user['NIK_NIP']); ?>">
+                    <input type="text" name="NIK_NIP" class="form-control" id="nik" value="<?= htmlspecialchars($user['NIK_NIP']); ?>" maxlength="16" required>
+                    <small class="text-muted">16 digit NIK</small>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Alamat Pemilik</label>
                     <div class="row">
-                        <div class="col-md-6">
-                            <label for="rt_rw" class="form-label small">RT/RW</label>
-                            <input type="text" class="form-control" name="rt_rw" id="rt_rw" placeholder="001/002" value="<?= htmlspecialchars($user['rt_rw']); ?>" maxlength="7">
-                            <small class="text-muted">Format: XXX/XXX</small>
+                        <div class="col-md-6 mb-3">
+                            <label for="provinsi" class="form-label">Provinsi</label>
+                            <select class="form-select select2-dropdown" id="provinsi" name="provinsi" required>
+                                <option value="">Pilih Provinsi</option>
+                            </select>
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="kabupaten" class="form-label">Kabupaten/Kota</label>
+                            <select class="form-select select2-dropdown" id="kabupaten" name="kabupaten" required>
+                                <option value="">Pilih Kabupaten/Kota</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="kecamatan" class="form-label">Kecamatan</label>
+                            <select class="form-select select2-dropdown" id="kecamatan" name="kecamatan" required>
+                                <option value="">Pilih Kecamatan</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="kel_desa" class="form-label">Kelurahan/Desa</label>
+                            <select class="form-select select2-dropdown" id="kel_desa" name="kel_desa" required>
+                                <option value="">Pilih Kelurahan/Desa</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
                         <div class="col-md-6">
-                            <label for="kel_desa" class="form-label small">Kelurahan/Desa</label>
-                            <input type="text" class="form-control" name="kel_desa" id="kel_desa" value="<?= htmlspecialchars($user['kel_desa']); ?>" required>
+                            <label for="rt_rw" class="form-label">RT/RW</label>
+                            <input type="text" class="form-control" name="rt_rw" id="rt_rw" placeholder="Contoh: 002/006" value="<?= htmlspecialchars($user['rt_rw']); ?>" maxlength="7" required>
+                            <small class="text-muted d-block mt-1">Format otomatis: 002/006</small>
                         </div>
                     </div>
                 </div>
 
                 <div class="mb-3">
-                    <label for="kecamatan" class="form-label">Kecamatan</label>
-                    <input type="text" class="form-control" name="kecamatan" id="kecamatan" value="<?= htmlspecialchars($user['kecamatan']); ?>">
-                </div>
-
-                <div class="mb-3">
-                    <label for="telepon" class="form-label">Nomor WhatsApp</label>
-                    <input type="tel" class="form-control" name="telepon" id="telepon" value="<?= htmlspecialchars($user['no_wa']); ?>">
-                </div>
+    <label for="telepon" class="form-label">Nomor WhatsApp</label>
+    <input type="tel" class="form-control" name="telepon" id="telepon" value="<?= htmlspecialchars($user['no_wa']); ?>" required>
+    <small class="text-muted">Contoh: 6281234567890 (digunakan untuk login)</small>
+</div>
 
                 <div class="mb-3">
                     <label for="email" class="form-label">Email</label>
-                    <input type="email" class="form-control" name="email" id="email" value="<?= htmlspecialchars($user['email']); ?>">
+                    <input type="email" class="form-control" name="email" id="email" value="<?= htmlspecialchars($user['email']); ?>" required>
                 </div>
 
                 <div class="mb-3">
@@ -176,7 +197,10 @@ if (!$user) {
 
                 <div class="d-flex justify-content-end gap-2 mt-4">
                     <button type="button" class="btn btn-kembali" onclick="window.history.back()">Kembali</button>
-                    <button type="submit" class="btn btn-registrasi">Edit Profil</button>
+                    <button type="submit" class="btn btn-registrasi" id="btnSubmit">
+                        Simpan Perubahan
+                        <span class="loading-spinner" id="loadingSpinner" style="display:none;"></span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -190,120 +214,16 @@ if (!$user) {
         </div>
     </footer>
 
+    <!-- Hidden inputs untuk menyimpan data wilayah dari database -->
+    <input type="hidden" id="current_provinsi" value="<?= htmlspecialchars($user['kode_provinsi'] ?? ''); ?>">
+    <input type="hidden" id="current_kabupaten" value="<?= htmlspecialchars($user['kode_kabupaten'] ?? ''); ?>">
+    <input type="hidden" id="current_kecamatan" value="<?= htmlspecialchars($user['kode_kecamatan'] ?? ''); ?>">
+    <input type="hidden" id="current_desa" value="<?= htmlspecialchars($user['kode_kel_desa'] ?? ''); ?>">
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Format RT/RW otomatis
-        document.getElementById('rt_rw').addEventListener('input', function(e) {
-            let value = e.target.value.replace(/[^0-9]/g, ''); // Hapus semua selain angka
-            
-            if (value.length > 3) {
-                // Format menjadi XXX/XXX
-                value = value.substring(0, 3) + '/' + value.substring(3, 6);
-            }
-            
-            e.target.value = value;
-        });
-
-        // Format saat halaman dimuat (untuk nilai yang sudah ada)
-        window.addEventListener('DOMContentLoaded', function() {
-            const rtRwInput = document.getElementById('rt_rw');
-            let currentValue = rtRwInput.value.replace(/[^0-9]/g, '');
-            
-            if (currentValue.length > 3) {
-                rtRwInput.value = currentValue.substring(0, 3) + '/' + currentValue.substring(3, 6);
-            }
-        });
-
-        // Preview KTP Baru
-        document.getElementById('fileKTP').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            const previewContainer = document.getElementById('previewContainer');
-            const currentKtpPreview = document.getElementById('currentKtpPreview');
-            const previewImage = document.getElementById('previewImage');
-            const pdfPreview = document.getElementById('pdfPreview');
-            const pdfFileName = document.getElementById('pdfFileName');
-
-            if (file) {
-                // Validasi ukuran file (1MB)
-                if (file.size > 1024 * 1024) {
-                    alert('File terlalu besar. Maksimal 1 MB.');
-                    e.target.value = '';
-                    previewContainer.classList.remove('show');
-                    return;
-                }
-
-                // Sembunyikan preview KTP lama jika ada
-                if (currentKtpPreview) {
-                    currentKtpPreview.style.display = 'none';
-                }
-
-                const fileType = file.type;
-
-                // Jika file adalah gambar
-                if (fileType.startsWith('image/')) {
-                    const reader = new FileReader();
-                    reader.onload = function(event) {
-                        previewImage.src = event.target.result;
-                        previewImage.style.display = 'block';
-                        pdfPreview.style.display = 'none';
-                        previewContainer.classList.add('show');
-                    };
-                    reader.readAsDataURL(file);
-                }
-                // Jika file adalah PDF
-                else if (fileType === 'application/pdf') {
-                    pdfFileName.textContent = file.name;
-                    previewImage.style.display = 'none';
-                    pdfPreview.style.display = 'block';
-                    previewContainer.classList.add('show');
-                }
-            } else {
-                previewContainer.classList.remove('show');
-                // Tampilkan kembali KTP lama jika ada
-                if (currentKtpPreview) {
-                    currentKtpPreview.style.display = 'block';
-                }
-            }
-        });
-
-        // Fungsi untuk menghapus preview KTP baru
-        function removePreview() {
-            const currentKtpPreview = document.getElementById('currentKtpPreview');
-            document.getElementById('fileKTP').value = '';
-            document.getElementById('previewContainer').classList.remove('show');
-            
-            // Tampilkan kembali KTP lama jika ada
-            if (currentKtpPreview) {
-                currentKtpPreview.style.display = 'block';
-            }
-        }
-
-        // Submit form
-        document.getElementById('editProfilForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            const formData = new FormData(this);
-
-            try {
-                const response = await fetch('process/proses_edit_profil.php', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    alert(result.message || 'Profil berhasil diperbarui!');
-                    window.location.reload();
-                } else {
-                    alert(result.message || 'Gagal memperbarui profil.');
-                }
-            } catch (error) {
-                console.error(error);
-                alert('Terjadi kesalahan pada server.');
-            }
-        });
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="assets/js/edit-profil.js"></script>
 </body>
 
 </html>

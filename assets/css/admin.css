@@ -12,6 +12,11 @@ body {
     min-height: 100vh !important;
 }
 
+body.modal-open {
+  overflow: auto !important;
+  padding-right: 0 !important;
+}
+
 .main-container {
     padding-top: 100px;
     h6 {

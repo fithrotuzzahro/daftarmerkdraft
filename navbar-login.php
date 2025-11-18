@@ -186,6 +186,84 @@
         height: 1.5rem;
     }
 
+    /* WhatsApp Floating Button */
+    .whatsapp-float {
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        width: 60px;
+        height: 60px;
+        background-color: #25D366;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 30px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 1000;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        animation: pulse 2s infinite;
+    }
+
+    .whatsapp-float:hover {
+        background-color: #20BA5A;
+        transform: scale(1.1);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+        color: white;
+    }
+
+    .whatsapp-float i {
+        margin-top: 2px;
+    }
+
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4);
+        }
+        50% {
+            box-shadow: 0 4px 20px rgba(37, 211, 102, 0.6);
+        }
+        100% {
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.4);
+        }
+    }
+
+    /* Tooltip untuk WhatsApp Button */
+    .whatsapp-float::before {
+        content: "Hubungi Kami";
+        position: absolute;
+        right: 70px;
+        background-color: #333;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 14px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+        font-family: 'Montserrat', sans-serif;
+    }
+
+    .whatsapp-float::after {
+        content: "";
+        position: absolute;
+        right: 60px;
+        border: 6px solid transparent;
+        border-left-color: #333;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
+    .whatsapp-float:hover::before,
+    .whatsapp-float:hover::after {
+        opacity: 1;
+    }
+
     @media (max-width: 768px) {
         .section-title {
             font-size: 1rem;
@@ -205,6 +283,24 @@
 
         .btn-login {
             margin-top: 10px;
+        }
+
+        .whatsapp-float {
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            bottom: 20px;
+            right: 20px;
+        }
+
+        .whatsapp-float::before {
+            font-size: 12px;
+            padding: 6px 10px;
+            right: 60px;
+        }
+
+        .whatsapp-float::after {
+            right: 50px;
         }
     }
 </style>
@@ -288,6 +384,15 @@
         </div>
     </div>
 </div>
+
+<!-- WhatsApp Floating Button -->
+<a href="https://wa.me/6281235051286?text=Halo%2C%20saya%20ingin%20bertanya%20mengenai%20layanan%20industri" 
+   class="whatsapp-float" 
+   target="_blank" 
+   rel="noopener noreferrer"
+   aria-label="Hubungi via WhatsApp">
+    <i class="bi bi-whatsapp"></i>
+</a>
 
 <!-- Overlay -->
 <div id="overlay"></div>

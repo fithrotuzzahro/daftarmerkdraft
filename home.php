@@ -11,7 +11,6 @@ $nik = $_SESSION['NIK_NIP'];
 // ===== CEK APAKAH SUDAH PERNAH MENDAFTAR =====
 require_once 'process/config_db.php';
 
-$sudahDaftar = false;
 $id_pendaftaran_aktif = null;
 
 try {
@@ -35,7 +34,7 @@ try {
     $query_difasilitasi = "SELECT COUNT(*) as jumlah_difasilitasi 
                            FROM pendaftaran 
                            WHERE merek_difasilitasi IS NOT NULL 
-                           AND YEAR(tgl_daftar) = :tahun";
+                           AND YEAR(tgl_daftar) = :tahu n";
     
     $stmt = $pdo->prepare($query_difasilitasi);
     $stmt->execute(['tahun' => $tahun_sekarang]);
@@ -100,17 +99,9 @@ try {
                     <?php endif; ?>
 
                     <div class="d-flex flex-column flex-sm-row justify-content-center align-items-center gap-2">
-                        <?php if ($sudahDaftar): ?>
-                            <!-- Button disabled jika sudah daftar -->
-                            <button class="btn-form px-4 py-2 btn-disabled" disabled title="Anda sudah memiliki pendaftaran aktif">
-                                <strong>FORM PENDAFTARAN MEREK</strong>
-                            </button>
-                        <?php else: ?>
-                            <!-- Button aktif jika belum daftar -->
                             <a class="btn-form px-4 py-2" href="form-pendaftaran.php">
                                 <strong>FORM PENDAFTARAN MEREK</strong>
                             </a>
-                        <?php endif; ?>
                         
                         <a class="btn-register px-4 py-2" href="status-seleksi-pendaftaran.php">
                             <strong>LIHAT PENGAJUAN ANDA</strong>

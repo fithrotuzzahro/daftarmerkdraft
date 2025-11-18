@@ -12,38 +12,24 @@ if (!isset($_SESSION['NIK_NIP'])) {
 
 $NIK = $_SESSION['NIK_NIP'];
 
-// ===== CEK APAKAH USER SUDAH PERNAH MENDAFTAR =====
 try {
-    $stmt = $pdo->prepare("SELECT id_pendaftaran, status_validasi, tgl_daftar FROM pendaftaran WHERE NIK = ? ORDER BY tgl_daftar DESC LIMIT 1");
-    $stmt->execute([$NIK]);
-    $pendaftaran_aktif = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    // Jika sudah pernah mendaftar, redirect ke halaman status
-    if ($pendaftaran_aktif) {
-        echo "<script>
-                alert('Anda sudah memiliki pendaftaran merek yang aktif.\\n\\nSetiap akun hanya dapat melakukan 1 kali pendaftaran merek.\\n\\nSilakan cek status pengajuan Anda.');
-                window.location.href = 'status-seleksi-pendaftaran.php';
-              </script>";
-        exit();
-    }
+    $stmt_master = $pdo->prepare("SELECT id_jenis_file, nama_jenis_file FROM masterfilelampiran WHERE id_jenis_file >= 9 ORDER BY id_jenis_file");
+    $stmt_master->execute();
+    $master_legalitas = $stmt_master->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
-    error_log("Error checking pendaftaran: " . $e->getMessage());
-    echo "<script>
-            alert('Terjadi kesalahan sistem. Silakan coba lagi.');
-            window.location.href = 'home.php';
-          </script>";
-    exit();
+    error_log("Error fetching master legalitas: " . $e->getMessage());
+    $master_legalitas = [];
 }
 
 // ===== PROSES FORM SUBMISSION =====
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     try {
-        // Double check apakah sudah pernah mendaftar (proteksi tambahan)
-        $stmt = $pdo->prepare("SELECT id_pendaftaran FROM pendaftaran WHERE NIK = ? LIMIT 1");
-        $stmt->execute([$NIK]);
-        if ($stmt->fetch()) {
-            throw new Exception("Anda sudah memiliki pendaftaran aktif. Setiap akun hanya dapat mendaftar 1 kali.");
-        }
+        // // Double check apakah sudah pernah mendaftar (proteksi tambahan)
+        // $stmt = $pdo->prepare("SELECT id_pendaftaran FROM pendaftaran WHERE NIK = ? LIMIT 1");
+        // $stmt->execute([$NIK]);
+        // if ($stmt->fetch()) {
+        //     throw new Exception("Anda sudah memiliki pendaftaran aktif. Setiap akun hanya dapat mendaftar 1 kali.");
+        // }
 
         // Mulai transaction
         $pdo->beginTransaction();
@@ -54,6 +40,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $kel_desa = trim($_POST['kel_desa']);
         $kecamatan = trim($_POST['kecamatan']);
         $no_telp_perusahaan = trim($_POST['no_telp_perusahaan']);
+
+        // Normalisasi nomor telepon perusahaan ke format 62 (jika diisi)
+        if (!empty($no_telp_perusahaan)) {
+            // Hapus semua karakter non-digit
+            $no_telp_perusahaan = preg_replace('/\D/', '', $no_telp_perusahaan);
+
+            // Konversi ke format 62
+            if (substr($no_telp_perusahaan, 0, 1) == '0') {
+                $no_telp_perusahaan = '62' . substr($no_telp_perusahaan, 1);
+            } elseif (substr($no_telp_perusahaan, 0, 2) != '62') {
+                $no_telp_perusahaan = '62' . $no_telp_perusahaan;
+            }
+
+            // Validasi format (11-15 digit, diawali 62)
+            if (!preg_match('/^62\d{9,13}$/', $no_telp_perusahaan)) {
+                throw new Exception("Format nomor telepon perusahaan tidak valid. Harus format 62xxx (11-15 digit)");
+            }
+        }
 
         // Parse data produk dari JSON
         $produk_data = json_decode($_POST['produk_data'], true);
@@ -103,44 +107,44 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $id_pendaftaran = $pdo->lastInsertId();
 
         // ===== 3. Upload file helper function (UPDATED) =====
-function uploadFile($fileInputName, $NIK, $fileType, $folder = 'uploads/')
-{
-    // Tentukan subfolder berdasarkan tipe file
-    $subFolder = '';
-    switch ($fileType) {
-        case 'logo':
-            $subFolder = 'logo/';
-            break;
-        default:
+        function uploadFile($fileInputName, $NIK, $fileType, $folder = 'uploads/')
+        {
+            // Tentukan subfolder berdasarkan tipe file
             $subFolder = '';
-    }
-    
-    // Format: uploads/(tipeFile)/(tipeFile)_NIK/
-    $finalFolder = $folder . $subFolder . $fileType . '_' . $NIK . '/';
-    
-    if (!file_exists($finalFolder)) {
-        mkdir($finalFolder, 0777, true);
-    }
+            switch ($fileType) {
+                case 'logo':
+                    $subFolder = 'logo/';
+                    break;
+                default:
+                    $subFolder = '';
+            }
 
-    if (isset($_FILES[$fileInputName]) && !empty($_FILES[$fileInputName]['name'])) {
-        $file_extension = strtolower(pathinfo($_FILES[$fileInputName]['name'], PATHINFO_EXTENSION));
-        $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
+            // Format: uploads/(tipeFile)/(tipeFile)_NIK/
+            $finalFolder = $folder . $subFolder . $fileType . '_' . $NIK . '/';
 
-        if (!in_array($file_extension, $allowed_extensions)) {
-            throw new Exception("Format file tidak diizinkan untuk {$fileInputName}");
+            if (!file_exists($finalFolder)) {
+                mkdir($finalFolder, 0777, true);
+            }
+
+            if (isset($_FILES[$fileInputName]) && !empty($_FILES[$fileInputName]['name'])) {
+                $file_extension = strtolower(pathinfo($_FILES[$fileInputName]['name'], PATHINFO_EXTENSION));
+                $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
+
+                if (!in_array($file_extension, $allowed_extensions)) {
+                    throw new Exception("Format file tidak diizinkan untuk {$fileInputName}");
+                }
+
+                $filename = time() . "_" . uniqid() . "." . $file_extension;
+                $target = $finalFolder . $filename;
+
+                if (move_uploaded_file($_FILES[$fileInputName]['tmp_name'], $target)) {
+                    return $target;
+                } else {
+                    throw new Exception("Gagal mengupload file {$fileInputName}");
+                }
+            }
+            return null;
         }
-
-        $filename = time() . "_" . uniqid() . "." . $file_extension;
-        $target = $finalFolder . $filename;
-
-        if (move_uploaded_file($_FILES[$fileInputName]['tmp_name'], $target)) {
-            return $target;
-        } else {
-            throw new Exception("Gagal mengupload file {$fileInputName}");
-        }
-    }
-    return null;
-}
 
         // ===== 4. Simpan ke tabel merek =====
         $kelas_merek = trim($_POST['kelas_merek']);
@@ -148,153 +152,189 @@ function uploadFile($fileInputName, $NIK, $fileType, $folder = 'uploads/')
         $nama_merek2 = trim($_POST['nama_merek2']);
         $nama_merek3 = trim($_POST['nama_merek3']);
 
-$logo1 = uploadFile('logo1', $NIK, 'logo', 'uploads/');
-$logo2 = uploadFile('logo2', $NIK, 'logo', 'uploads/');
-$logo3 = uploadFile('logo3', $NIK, 'logo', 'uploads/');
+        $logo1 = uploadFile('logo1', $NIK, 'logo', 'uploads/');
+        $logo2 = uploadFile('logo2', $NIK, 'logo', 'uploads/');
+        $logo3 = uploadFile('logo3', $NIK, 'logo', 'uploads/');
 
         $stmt3 = $pdo->prepare("INSERT INTO merek (id_pendaftaran, kelas_merek, nama_merek1, nama_merek2, nama_merek3, logo1, logo2, logo3)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt3->execute([$id_pendaftaran, $kelas_merek, $nama_merek1, $nama_merek2, $nama_merek3, $logo1, $logo2, $logo3]);
 
         // ===== 5. Simpan ke tabel lampiran =====
-function uploadMultipleFiles($inputName, $id_jenis_file, $id_pendaftaran, $pdo, $NIK, $fileType, $isRequired = false)
-{
-    // Cek apakah input file ada dan tidak kosong
-    if (!isset($_FILES[$inputName]) || empty($_FILES[$inputName]['name'])) {
-        if ($isRequired) {
-            throw new Exception("File untuk {$inputName} wajib diupload!");
-        }
-        return;
-    }
-
-    // Cek apakah ada file yang benar-benar diupload
-    if (empty($_FILES[$inputName]['name'][0])) {
-        if ($isRequired) {
-            throw new Exception("File untuk {$inputName} wajib diupload!");
-        }
-        return;
-    }
-
-    // Tentukan base folder berdasarkan id_jenis_file
-    $baseFolder = '';
-    switch ($id_jenis_file) {
-        case 1: // NIB
-            $baseFolder = "uploads/nib/nib_{$NIK}/";
-            break;
-        case 2: // Foto Produk
-            $baseFolder = "uploads/fotoproduk/fotoproduk_{$NIK}/";
-            break;
-        case 3: // Proses Produksi
-            $baseFolder = "uploads/prosesproduksi/prosesproduksi_{$NIK}/";
-            break;
-        case 9: // P-IRT
-            $baseFolder = "uploads/legalitas/PIRT_{$NIK}/";
-            break;
-        case 10: // BPOM-MD
-            $baseFolder = "uploads/legalitas/BPOMMD_{$NIK}/";
-            break;
-        case 11: // HALAL
-            $baseFolder = "uploads/legalitas/HALAL_{$NIK}/";
-            break;
-        case 12: // NUTRITION FACTS
-            $baseFolder = "uploads/legalitas/NUTRITIONFACTS_{$NIK}/";
-            break;
-        case 13: // SNI
-            $baseFolder = "uploads/legalitas/SNI_{$NIK}/";
-            break;
-        case 14: // Legalitas Lainnya
-            $baseFolder = "uploads/legalitas/Lainnya_{$NIK}/";
-            break;
-        default:
-            $baseFolder = "uploads/lampiran/lampiran_{$NIK}/";
-            break;
-    }
-
-    // Pastikan folder utama ada
-    if (!file_exists($baseFolder)) {
-        mkdir($baseFolder, 0777, true);
-    }
-
-    $total_files = count($_FILES[$inputName]['name']);
-
-    for ($i = 0; $i < $total_files; $i++) {
-        if (!empty($_FILES[$inputName]['name'][$i])) {
-            $file_extension = strtolower(pathinfo($_FILES[$inputName]['name'][$i], PATHINFO_EXTENSION));
-            $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
-
-            if (!in_array($file_extension, $allowed_extensions)) {
-                throw new Exception("Format file tidak diizinkan pada {$inputName}");
+        function uploadMultipleFiles($inputName, $id_jenis_file, $id_pendaftaran, $pdo, $NIK, $fileType, $isRequired = false)
+        {
+            // Cek apakah input file ada dan tidak kosong
+            if (!isset($_FILES[$inputName]) || empty($_FILES[$inputName]['name'])) {
+                if ($isRequired) {
+                    throw new Exception("File untuk {$inputName} wajib diupload!");
+                }
+                return;
             }
 
-            $max_size = ($id_jenis_file == 1) ? 10 * 1024 * 1024 : 1 * 1024 * 1024;
-            if ($_FILES[$inputName]['size'][$i] > $max_size) {
-                throw new Exception("Ukuran file {$_FILES[$inputName]['name'][$i]} melebihi batas maksimal");
+            // Cek apakah ada file yang benar-benar diupload
+            if (empty($_FILES[$inputName]['name'][0])) {
+                if ($isRequired) {
+                    throw new Exception("File untuk {$inputName} wajib diupload!");
+                }
+                return;
             }
 
-            $filename = time() . "_" . uniqid() . "_" . $i . "." . $file_extension;
-            $target = $baseFolder . $filename;
+            // Tentukan base folder berdasarkan id_jenis_file
+            $baseFolder = '';
+            switch ($id_jenis_file) {
+                case 1: // NIB
+                    $baseFolder = "uploads/nib/nib_{$NIK}/";
+                    break;
+                case 2: // Foto Produk
+                    $baseFolder = "uploads/fotoproduk/fotoproduk_{$NIK}/";
+                    break;
+                case 3: // Proses Produksi
+                    $baseFolder = "uploads/prosesproduksi/prosesproduksi_{$NIK}/";
+                    break;
+                case 9: // P-IRT
+                    $baseFolder = "uploads/legalitas/PIRT_{$NIK}/";
+                    break;
+                case 10: // BPOM-MD
+                    $baseFolder = "uploads/legalitas/BPOMMD_{$NIK}/";
+                    break;
+                case 11: // HALAL
+                    $baseFolder = "uploads/legalitas/HALAL_{$NIK}/";
+                    break;
+                case 12: // NUTRITION FACTS
+                    $baseFolder = "uploads/legalitas/NUTRITIONFACTS_{$NIK}/";
+                    break;
+                case 13: // SNI
+                    $baseFolder = "uploads/legalitas/SNI_{$NIK}/";
+                    break;
+                case 14: // Legalitas Lainnya
+                    $baseFolder = "uploads/legalitas/Lainnya_{$NIK}/";
+                    break;
+                default:
+                    $baseFolder = "uploads/lampiran/lampiran_{$NIK}/";
+                    break;
+            }
 
-            if (move_uploaded_file($_FILES[$inputName]['tmp_name'][$i], $target)) {
-                $tgl_upload = date('Y-m-d H:i:s');
-                $stmt = $pdo->prepare("INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path)
+            // Pastikan folder utama ada
+            if (!file_exists($baseFolder)) {
+                mkdir($baseFolder, 0777, true);
+            }
+
+            $total_files = count($_FILES[$inputName]['name']);
+
+            for ($i = 0; $i < $total_files; $i++) {
+                if (!empty($_FILES[$inputName]['name'][$i])) {
+                    $file_extension = strtolower(pathinfo($_FILES[$inputName]['name'][$i], PATHINFO_EXTENSION));
+                    $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
+
+                    if (!in_array($file_extension, $allowed_extensions)) {
+                        throw new Exception("Format file tidak diizinkan pada {$inputName}");
+                    }
+
+                    $max_size = ($id_jenis_file == 1) ? 10 * 1024 * 1024 : 1 * 1024 * 1024;
+                    if ($_FILES[$inputName]['size'][$i] > $max_size) {
+                        throw new Exception("Ukuran file {$_FILES[$inputName]['name'][$i]} melebihi batas maksimal");
+                    }
+
+                    $filename = time() . "_" . uniqid() . "_" . $i . "." . $file_extension;
+                    $target = $baseFolder . $filename;
+
+                    if (move_uploaded_file($_FILES[$inputName]['tmp_name'][$i], $target)) {
+                        $tgl_upload = date('Y-m-d H:i:s');
+                        $stmt = $pdo->prepare("INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path)
                        VALUES (?, ?, ?, ?)");
-                $stmt->execute([$id_pendaftaran, $id_jenis_file, $tgl_upload, $target]);
-            } else {
-                throw new Exception("Gagal mengupload file {$_FILES[$inputName]['name'][$i]}");
+                        $stmt->execute([$id_pendaftaran, $id_jenis_file, $tgl_upload, $target]);
+                    } else {
+                        throw new Exception("Gagal mengupload file {$_FILES[$inputName]['name'][$i]}");
+                    }
+                }
             }
         }
-    }
-}
 
-uploadMultipleFiles('nib_files', 1, $id_pendaftaran, $pdo, $NIK, 'nib', true);
-        // Upload lampiran legalitas lainnya (resmi)
-        if (isset($_POST['legalitas']) && is_array($_POST['legalitas'])) {
-    $legalitas_map = [
-        'P-IRT' => 9,
-        'BPOM-MD' => 10,
-        'HALAL' => 11,
-        'NUTRITION FACTS' => 12,
-        'SNI' => 13
-    ];
+        uploadMultipleFiles('nib_files', 1, $id_pendaftaran, $pdo, $NIK, 'nib', true);
+        
+        // ===== Upload lampiran legalitas (sistem baru) =====
+        if (isset($_FILES)) {
+            foreach ($_FILES as $inputName => $fileData) {
+                // Cek apakah ini file legalitas (format: legalitas_files_X)
+                if (preg_match('/^legalitas_files_(\d+)$/', $inputName, $matches)) {
+                    $id_jenis_file = intval($matches[1]);
+                    
+                    // Validasi id_jenis_file ada di master
+                    $stmt_check = $pdo->prepare("SELECT nama_jenis_file FROM masterfilelampiran WHERE id_jenis_file = ?");
+                    $stmt_check->execute([$id_jenis_file]);
+                    $master = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                    
+                    if (!$master) {
+                        throw new Exception("Jenis file legalitas tidak valid (ID: {$id_jenis_file})");
+                    }
+                    
+                    // Tentukan folder berdasarkan id_jenis_file
+                    $folderMap = [
+                        9 => "PIRT",
+                        10 => "BPOMMD",
+                        11 => "HALAL",
+                        12 => "NUTRITIONFACTS",
+                        13 => "SNI",
+                        14 => "Lainnya"
+                    ];
+                    
+                    $folderName = isset($folderMap[$id_jenis_file]) ? $folderMap[$id_jenis_file] : "Legalitas_{$id_jenis_file}";
+                    $baseFolder = "uploads/legalitas/{$folderName}_{$NIK}/";
+                    
+                    // Pastikan folder ada
+                    if (!file_exists($baseFolder)) {
+                        mkdir($baseFolder, 0777, true);
+                    }
+                    
+                    // Upload semua file untuk jenis ini
+                    $total_files = count($fileData['name']);
+                    
+                    for ($i = 0; $i < $total_files; $i++) {
+                        if (!empty($fileData['name'][$i])) {
+                            $file_extension = strtolower(pathinfo($fileData['name'][$i], PATHINFO_EXTENSION));
+                            $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
+                            
+                            if (!in_array($file_extension, $allowed_extensions)) {
+                                throw new Exception("Format file tidak diizinkan: {$fileData['name'][$i]}");
+                            }
+                            
+                            if ($fileData['size'][$i] > 1 * 1024 * 1024) {
+                                throw new Exception("Ukuran file {$fileData['name'][$i]} melebihi 1 MB");
+                            }
+                            
+                            $filename = time() . "_" . uniqid() . "_" . $i . "." . $file_extension;
+                            $target = $baseFolder . $filename;
+                            
+                            if (move_uploaded_file($fileData['tmp_name'][$i], $target)) {
+                                $tgl_upload = date('Y-m-d H:i:s');
+                                $stmt = $pdo->prepare("INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path)
+                                                      VALUES (?, ?, ?, ?)");
+                                $stmt->execute([$id_pendaftaran, $id_jenis_file, $tgl_upload, $target]);
+                            } else {
+                                throw new Exception("Gagal mengupload file {$fileData['name'][$i]}");
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-    $checkboxIndexMap = [
-        'P-IRT' => 0,
-        'BPOM-MD' => 1,
-        'HALAL' => 2,
-        'NUTRITION FACTS' => 3,
-        'SNI' => 4
-    ];
-
-    foreach ($_POST['legalitas'] as $legal) {
-        $realIndex = $checkboxIndexMap[$legal] ?? 0;
-        $inputName = 'legalitas_files_' . $realIndex;
-        $id_jenis_file = $legalitas_map[$legal] ?? 14;
-
-        // Upload - folder akan dibuat otomatis
-        uploadMultipleFiles($inputName, $id_jenis_file, $id_pendaftaran, $pdo, $NIK, 'legalitas', true);
-    }
-}
-
-        // Upload legalitas lainnya (input manual)
-        if (isset($_POST['legalitas_lain']) && !empty(trim($_POST['legalitas_lain']))) {
-    $inputName = 'legalitas_files_lain';
-    uploadMultipleFiles($inputName, 14, $id_pendaftaran, $pdo, $NIK, 'legalitas', true);
-}
 
 
         // Upload foto produk dan proses
-uploadMultipleFiles('foto_produk', 2, $id_pendaftaran, $pdo, $NIK, 'fotoproduk', true);
-uploadMultipleFiles('foto_proses', 3, $id_pendaftaran, $pdo, $NIK, 'prosesproduksi', true);
+        uploadMultipleFiles('foto_produk', 2, $id_pendaftaran, $pdo, $NIK, 'fotoproduk', true);
+        uploadMultipleFiles('foto_proses', 3, $id_pendaftaran, $pdo, $NIK, 'prosesproduksi', true);
 
 
         // Commit transaction
         $pdo->commit();
 
-        // Redirect ke halaman status
-        echo "<script>
-                alert('Data pendaftaran merek berhasil dikirim!\\n\\nSilakan cek status pengajuan Anda secara berkala.\\n\\nTerima kasih.');
-                window.location.href = 'status-seleksi-pendaftaran.php';
-              </script>";
+        // Set session message untuk sukses
+        $_SESSION['alert_message'] = 'Data pendaftaran merek berhasil dikirim!\n\nSilakan cek status pengajuan Anda secara berkala.\n\nTerima kasih.';
+        $_SESSION['alert_type'] = 'success';
+
+        // Langsung redirect ke status-seleksi-pendaftaran.php
+        header("Location: status-seleksi-pendaftaran.php");
         exit();
     } catch (Exception $e) {
         // Rollback jika ada error
@@ -305,10 +345,11 @@ uploadMultipleFiles('foto_proses', 3, $id_pendaftaran, $pdo, $NIK, 'prosesproduk
         // Log error
         error_log("Error form pendaftaran: " . $e->getMessage());
 
-        echo "<script>
-                alert('Terjadi kesalahan: " . addslashes($e->getMessage()) . "\\n\\nSilakan coba lagi.');
-                window.history.back();
-              </script>";
+        $_SESSION['alert_message'] = 'Terjadi kesalahan: ' . $e->getMessage() . '\n\nSilakan coba lagi.';
+        $_SESSION['alert_type'] = 'danger';
+
+        // Redirect ke halaman ini sendiri
+        header("Location: " . $_SERVER['PHP_SELF']);
         exit();
     }
 }
@@ -378,7 +419,7 @@ uploadMultipleFiles('foto_proses', 3, $id_pendaftaran, $pdo, $NIK, 'prosesproduk
                 <div class="sidebar-section border border-light-subtle">
                     <h5>Bantuan</h5>
                     <p>Jika ada kendala dalam mengisi formulir bisa menghubungi kami dibawah ini.</p>
-                    <a href="https://wa.me/6285233499260" class="help-contact" target="_blank">
+                    <a href="https://wa.me/6281235051286?text=Halo%2C%20saya%20ingin%20bertanya%20mengenai%20layanan%20industri" class="help-contact" target="_blank">
                         <i class="fab fa-whatsapp pe-2"></i> Bidang Perindustrian Disperindag Sidoarjo
                     </a>
                     <p class="text-danger mt-2">* Tidak menerima panggilan, hanya chat.</p>
@@ -442,7 +483,7 @@ uploadMultipleFiles('foto_proses', 3, $id_pendaftaran, $pdo, $NIK, 'prosesproduk
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Nomor Telepon Perusahaan</label>
-                                <input type="tel" name="no_telp_perusahaan" class="form-control" placeholder="Kosongi jika tidak ada atau sama dengan nomor telepon pemilik">
+                                <input type="tel" name="no_telp_perusahaan" id="no_telp_perusahaan" class="form-control" placeholder="6281234567890 (Kosongi jika tidak ada atau sama dengan nomor telepon pemilik)">
                             </div>
                         </div>
                         <div class="mb-3">
@@ -521,46 +562,22 @@ uploadMultipleFiles('foto_proses', 3, $id_pendaftaran, $pdo, $NIK, 'prosesproduk
 
                         <div class="mb-3">
                             <label class="form-label">Legalitas/Standardisasi yang telah dimiliki</label>
-                            <div class="row">
-                                <div class="col-md-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input legalitas-checkbox" type="checkbox" name="legalitas[]" value="P-IRT" id="pirt">
-                                        <label class="form-check-label" for="pirt">P-IRT</label>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input legalitas-checkbox" type="checkbox" name="legalitas[]" value="BPOM-MD" id="bpommd">
-                                        <label class="form-check-label" for="bpommd">BPOM-MD</label>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input legalitas-checkbox" type="checkbox" name="legalitas[]" value="HALAL" id="halal">
-                                        <label class="form-check-label" for="halal">HALAL</label>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row mt-2">
-                                <div class="col-md-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input legalitas-checkbox" type="checkbox" name="legalitas[]" value="NUTRITION FACTS" id="nutrition">
-                                        <label class="form-check-label" for="nutrition">NUTRITION FACTS</label>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input legalitas-checkbox" type="checkbox" name="legalitas[]" value="SNI" id="sni">
-                                        <label class="form-check-label" for="sni">SNI</label>
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <input type="text" name="legalitas_lain" placeholder="Yang lain" class="form-control">
-                                </div>
+                            <p class="text-muted small">Upload file legalitas yang Anda miliki, kemudian pilih jenis legalitasnya dari dropdown<br>
+                            <span style="font-weight: 600;">Contohnya: P-IRT, BPOM-MD, HALAL, NUTRITION FACTS, SNI, dan lainnya.</span></p>
+                            
+                            <!-- Upload Zone -->
+                            <div class="file-drop-zone" id="legalitasDropZone">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                                <p><strong>Seret & Lepas file di sini</strong><br>atau klik untuk memilih file</p>
+                                <small>Upload file legalitas (Format PDF). Maks 1 MB per file</small>
+                                <input type="file" id="legalitas-file-input" accept=".pdf" multiple hidden>
                             </div>
 
-                            <!-- Upload Section untuk Legalitas yang dipilih -->
-                            <div id="legalitasUploadContainer"></div>
+                            <!-- List File yang diupload -->
+                            <div id="legalitasFileList" class="mt-3"></div>
+
+                            <!-- Hidden inputs untuk form submission -->
+                            <div id="legalitasHiddenInputs"></div>
                         </div>
 
                         <div class="mb-3">
@@ -744,7 +761,14 @@ uploadMultipleFiles('foto_proses', 3, $id_pendaftaran, $pdo, $NIK, 'prosesproduk
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Inject master legalitas data
+        var masterLegalitas = <?php echo json_encode($master_legalitas); ?>;
+        console.log('Master Legalitas Loaded:', masterLegalitas); // Debug line
+    </script>
     <script src="assets/js/form-pendaftaran.js"></script>
+
+
 </body>
 
 </html>

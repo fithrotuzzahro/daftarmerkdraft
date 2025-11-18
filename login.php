@@ -75,9 +75,8 @@ if (isset($_SESSION['NIK_NIP'])) {
             <form id="requestOtpForm">
                 <div class="mb-3">
                     <label for="identifier" class="form-label">Email atau Nomor WhatsApp</label>
-                    <input type="text" class="form-control" id="identifier" name="identifier" 
-                           placeholder="email@example.com atau 081234567890" required>
-                    <small class="text-muted">Gunakan email atau nomor WA yang terdaftar</small>
+                    <input type="text" class="form-control" id="identifier" name="identifier" required>
+                    <small class="text-muted">Gunakan email atau nomor WA yang terdaftar (format: 62xxx)</small>
                 </div>
 
                 <div class="d-flex gap-2 flex-wrap justify-content-end">
@@ -129,6 +128,28 @@ if (isset($_SESSION['NIK_NIP'])) {
     <script>
         let countdownInterval;
         let resendTimeout;
+
+        // Format nomor telepon saat blur
+        document.getElementById('identifier').addEventListener('blur', function() {
+            let value = this.value.trim();
+            
+            // Cek apakah bukan email
+            if (value && !value.includes('@')) {
+                // Hapus semua karakter non-digit
+                value = value.replace(/\D/g, '');
+                
+                // Jika diawali 0, ganti dengan 62
+                if (value.startsWith('0')) {
+                    value = '62' + value.substring(1);
+                }
+                // Jika tidak diawali 62 dan tidak kosong, tambahkan 62
+                else if (!value.startsWith('62') && value.length > 0) {
+                    value = '62' + value;
+                }
+                
+                this.value = value;
+            }
+        });
 
         // Request OTP
         document.getElementById('requestOtpForm').addEventListener('submit', async (e) => {

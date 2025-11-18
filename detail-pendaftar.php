@@ -189,18 +189,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
       }
       exit;
     }
-    
   } catch (PDOException $e) {
     error_log("Error AJAX: " . $e->getMessage());
     echo json_encode(['success' => false, 'message' => 'Terjadi kesalahan database: ' . $e->getMessage()]);
     exit;
   }
-  
 }
 
 
+
 try {
-  // Query untuk mengambil data lengkap
+  // Query untuk mengambil data lengkap dengan KOLOM BARU
   $query = "SELECT 
         p.id_pendaftaran,
         p.tgl_daftar,
@@ -211,9 +210,16 @@ try {
         u.NIK_NIP,
         u.nama_lengkap,
         u.no_wa,
+        u.email,
         u.rt_rw AS rt_rw_pemilik,
-        u.kel_desa AS kel_desa_pemilik,
+        u.kode_provinsi,
+        u.nama_provinsi,
+        u.kode_kabupaten,
+        u.nama_kabupaten,
+        u.kode_kecamatan,
         u.kecamatan AS kecamatan_pemilik,
+        u.kode_kel_desa,
+        u.kel_desa AS kel_desa_pemilik,
         u.foto_ktp,
         du.id_usaha,
         du.nama_usaha,
@@ -251,7 +257,7 @@ try {
     exit();
   }
 
-  // Query untuk lampiran
+  // Query lampiran tetap sama (tidak berubah)
   $query_lampiran = "SELECT l.*, mf.nama_jenis_file 
     FROM lampiran l
     INNER JOIN masterfilelampiran mf ON l.id_jenis_file = mf.id_jenis_file
@@ -677,18 +683,42 @@ function getBadgeClass($status)
                 <label class="form-label small">NIK</label>
                 <input class="form-control" value="<?php echo htmlspecialchars($data['NIK_NIP']); ?>" readonly />
               </div>
+
+              <!-- ALAMAT LENGKAP DENGAN KODE WILAYAH -->
               <div class="col-md-6">
-                <label class="form-label small">RT/RW</label>
-                <input class="form-control" value="<?php echo htmlspecialchars($data['rt_rw_pemilik']); ?>" readonly />
+                <label class="form-label small">Provinsi</label>
+                <input class="form-control" value="<?php echo htmlspecialchars($data['nama_provinsi'] ?? '-'); ?>" readonly />
+                <small class="text-muted">Kode: <?php echo htmlspecialchars($data['kode_provinsi'] ?? '-'); ?></small>
               </div>
+
+              <div class="col-md-6">
+                <label class="form-label small">Kabupaten/Kota</label>
+                <input class="form-control" value="<?php echo htmlspecialchars($data['nama_kabupaten'] ?? '-'); ?>" readonly />
+                <small class="text-muted">Kode: <?php echo htmlspecialchars($data['kode_kabupaten'] ?? '-'); ?></small>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label small">Kecamatan</label>
+                <input class="form-control" value="<?php echo htmlspecialchars($data['kecamatan_pemilik'] ?? '-'); ?>" readonly />
+                <small class="text-muted">Kode: <?php echo htmlspecialchars($data['kode_kecamatan'] ?? '-'); ?></small>
+              </div>
+
               <div class="col-md-6">
                 <label class="form-label small">Kelurahan/Desa</label>
-                <input class="form-control" value="<?php echo htmlspecialchars($data['kel_desa_pemilik']); ?>" readonly />
+                <input class="form-control" value="<?php echo htmlspecialchars($data['kel_desa_pemilik'] ?? '-'); ?>" readonly />
+                <small class="text-muted">Kode: <?php echo htmlspecialchars($data['kode_kel_desa'] ?? '-'); ?></small>
               </div>
-              <div class="col-12">
-                <label class="form-label small">Kecamatan</label>
-                <input class="form-control" value="<?php echo htmlspecialchars($data['kecamatan_pemilik']); ?>" readonly />
+
+              <div class="col-md-6">
+                <label class="form-label small">RT/RW</label>
+                <input class="form-control" value="<?php echo htmlspecialchars($data['rt_rw_pemilik'] ?? '-'); ?>" readonly />
               </div>
+
+              <div class="col-md-6">
+                <label class="form-label small">Email</label>
+                <input class="form-control" value="<?php echo htmlspecialchars($data['email'] ?? '-'); ?>" readonly />
+              </div>
+
               <div class="col-12">
                 <label class="form-label small">Nomor Telepon/HP Pemilik</label>
                 <div class="input-group">
@@ -840,11 +870,6 @@ function getBadgeClass($status)
 
             <div class="mb-3">
               <div class="small fw-semibold mb-2">Legalitas/Standardisasi yang telah dimiliki</div>
-              <div class="legalitas d-flex flex-wrap gap-2">
-                <?php foreach ($legalitas_array as $legal): ?>
-                  <a type="button" style="padding: 2px 5px; border-radius: 50px; border: 1px solid #000; margin-bottom: 20px; cursor: default;"><?php echo trim($legal); ?></a>
-                <?php endforeach; ?>
-              </div>
               <div class="row">
                 <?php if (isset($lampiran['P-IRT'])): ?>
                   <div class="col-md-6 mb-4">
@@ -861,7 +886,7 @@ function getBadgeClass($status)
                             <div class="pdf-card" style="cursor: pointer;"
                               onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;P-IRT&quot;]').click()">
                               <i class="bi bi-file-pdf-fill pdf-icon"></i>
-                              <div class="pdf-label">P-IRT Document</div>
+                              <div class="pdf-label">Dokumen P-IRT</div>
                               <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
@@ -905,7 +930,7 @@ function getBadgeClass($status)
                             <div class="pdf-card" style="cursor: pointer;"
                               onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;BPOM-MD&quot;]').click()">
                               <i class="bi bi-file-pdf-fill pdf-icon"></i>
-                              <div class="pdf-label">BPOM-MD Document</div>
+                              <div class="pdf-label">Dokumen BPOM-MD</div>
                               <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
@@ -949,7 +974,7 @@ function getBadgeClass($status)
                             <div class="pdf-card" style="cursor: pointer;"
                               onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;HALAL&quot;]').click()">
                               <i class="bi bi-file-pdf-fill pdf-icon"></i>
-                              <div class="pdf-label">HALAL Certificate</div>
+                              <div class="pdf-label">Dokumen HALAL</div>
                               <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
@@ -1037,7 +1062,7 @@ function getBadgeClass($status)
                             <div class="pdf-card" style="cursor: pointer;"
                               onclick="document.querySelector('[data-src=&quot;<?php echo htmlspecialchars($item['file_path']); ?>&quot;][data-title=&quot;SNI&quot;]').click()">
                               <i class="bi bi-file-pdf-fill pdf-icon"></i>
-                              <div class="pdf-label">SNI Certificate</div>
+                              <div class="pdf-label">Dokumen SNI</div>
                               <small class="mt-2" style="font-size: 0.75rem; opacity: 0.9;">Klik untuk preview</small>
                             </div>
                           <?php else: ?>
@@ -1278,6 +1303,79 @@ function getBadgeClass($status)
     const reviewFieldset = document.getElementById('reviewFieldset');
     const btnKonfirmasiTidakBisa = document.getElementById('btnKonfirmasiTidakBisa');
 
+    // ============================================
+    // BOOTSTRAP ALERT & CONFIRM MODALS
+    // ============================================
+    function showAlert(message, type = 'warning') {
+      const icon = type === 'danger' ? '❌' : type === 'success' ? '✅' : '⚠️';
+
+      const alertModal = `
+    <div class="modal fade" id="alertModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+          <div class="modal-body text-center p-4">
+            <div class="fs-1 mb-3">${icon}</div>
+            <p class="mb-0">${message}</p>
+          </div>
+          <div class="modal-footer border-0 justify-content-center">
+            <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+      const existingModal = document.getElementById('alertModal');
+      if (existingModal) existingModal.remove();
+
+      document.body.insertAdjacentHTML('beforeend', alertModal);
+      const modal = new bootstrap.Modal(document.getElementById('alertModal'));
+      modal.show();
+
+      document.getElementById('alertModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+      });
+    }
+
+    function showConfirm(message, onConfirm, onCancel = null) {
+      const confirmModal = `
+    <div class="modal fade" id="confirmModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-body text-center p-4">
+            <div class="fs-1 mb-3">⚠️</div>
+            <p class="mb-0">${message.replace(/\n/g, '<br>')}</p>
+          </div>
+          <div class="modal-footer border-0 justify-content-center gap-2">
+            <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal" id="btnModalCancel">Batal</button>
+            <button type="button" class="btn btn-primary px-4" id="btnModalConfirm">Ya, Lanjutkan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+      const existingModal = document.getElementById('confirmModal');
+      if (existingModal) existingModal.remove();
+
+      document.body.insertAdjacentHTML('beforeend', confirmModal);
+      const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+      modal.show();
+
+      document.getElementById('btnModalConfirm').addEventListener('click', function() {
+        modal.hide();
+        if (onConfirm) onConfirm();
+      });
+
+      document.getElementById('btnModalCancel').addEventListener('click', function() {
+        if (onCancel) onCancel();
+      });
+
+      document.getElementById('confirmModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+      });
+    }
+
     // ===== HANDLER UPLOAD SURAT KETERANGAN IKM =====
     const formSuratKeterangan = document.getElementById('formSuratKeterangan');
     if (formSuratKeterangan) {
@@ -1303,7 +1401,7 @@ function getBadgeClass($status)
 
         // Validasi ukuran
         if (file.size > 10 * 1024 * 1024) {
-          alert('Ukuran file maksimal 10MB!');
+          showAlert('Ukuran file maksimal 10MB!');
           this.value = '';
           return;
         }
@@ -1313,7 +1411,7 @@ function getBadgeClass($status)
         const fileExt = file.name.split('.').pop().toLowerCase();
 
         if (!allowedExt.includes(fileExt)) {
-          alert('Format file harus PDF');
+          showAlert('Format file harus PDF');
           this.value = '';
           return;
         }
@@ -1389,52 +1487,51 @@ function getBadgeClass($status)
         });
       }
 
+      
       function uploadSuratIKM(file) {
-        if (!confirm('Apakah Anda yakin ingin mengupload Surat Keterangan IKM ini?')) {
+  showConfirm('Apakah Anda yakin ingin mengupload Surat Keterangan IKM ini?', function() {
+    // Kode upload HANYA di dalam callback ini
+    const formData = new FormData();
+    formData.append('ajax_action', 'upload_surat_keterangan');
+    formData.append('fileSuratKeterangan', file);
+
+    btnUpload.disabled = true;
+    btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Mengupload...';
+
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showAlert('Surat Keterangan IKM berhasil diupload!', 'success');
+          fileInput.disabled = true;
+          btnUpload.disabled = true;
+          btnUpload.innerHTML = '<i class="bi bi-check-circle me-2"></i>Sudah Diupload';
+          btnUpload.classList.remove('btn-dark');
+          btnUpload.classList.add('btn-success');
+          setTimeout(() => location.reload(), 1000);
+        } else {
+          showAlert('Gagal: ' + data.message, 'danger');
           fileInput.value = '';
-          return;
+          btnUpload.disabled = false;
+          btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Keterangan IKM';
         }
-
-        const formData = new FormData();
-        formData.append('ajax_action', 'upload_surat_keterangan');
-        formData.append('fileSuratKeterangan', file);
-
-        btnUpload.disabled = true;
-        btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Mengupload...';
-
-        fetch(window.location.href, {
-            method: 'POST',
-            body: formData
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              alert('Surat Keterangan IKM berhasil diupload!');
-
-              // Disable input dan ubah tombol
-              fileInput.disabled = true;
-              btnUpload.disabled = true;
-              btnUpload.innerHTML = '<i class="bi bi-check-circle me-2"></i>Sudah Diupload';
-              btnUpload.classList.remove('btn-dark');
-              btnUpload.classList.add('btn-success');
-
-              // Reload setelah 1 detik
-              setTimeout(() => location.reload(), 1000);
-            } else {
-              alert('Gagal: ' + data.message);
-              fileInput.value = '';
-              btnUpload.disabled = false;
-              btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Keterangan IKM';
-            }
-          })
-          .catch(error => {
-            console.error('Error:', error);
-            alert('Terjadi kesalahan saat mengupload file.');
-            fileInput.value = '';
-            btnUpload.disabled = false;
-            btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Keterangan IKM';
-          });
-      }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        showAlert('Terjadi kesalahan saat mengupload file.', 'danger');
+        fileInput.value = '';
+        btnUpload.disabled = false;
+        btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Keterangan IKM';
+      });
+  }, function() {
+    // Callback saat user klik "Batal"
+    fileInput.value = '';
+  });
+  
+}
 
       // Event submit form (backup jika ada yang langsung submit)
       formSuratKeterangan.addEventListener('submit', function(e) {
@@ -1444,7 +1541,7 @@ function getBadgeClass($status)
         if (file) {
           uploadSuratIKM(file);
         } else {
-          alert('Silakan pilih file terlebih dahulu!');
+          showAlert('Silakan pilih file terlebih dahulu!');
         }
       });
     }
@@ -1474,7 +1571,7 @@ function getBadgeClass($status)
 
         // Validasi ukuran
         if (file.size > 10 * 1024 * 1024) {
-          alert('Ukuran file maksimal 10MB!');
+          showAlert('Ukuran file maksimal 10MB!');
           this.value = '';
           return;
         }
@@ -1484,7 +1581,7 @@ function getBadgeClass($status)
         const fileExt = file.name.split('.').pop().toLowerCase();
 
         if (!allowedExt.includes(fileExt)) {
-          alert('Format file harus PDF');
+          showAlert('Format file harus PDF');
           this.value = '';
           return;
         }
@@ -1561,51 +1658,55 @@ function getBadgeClass($status)
       }
 
       function uploadBuktiPendaftaran(file) {
-        if (!confirm('Apakah Anda yakin ingin mengupload Bukti Pendaftaran ini?\n\nStatus akan otomatis berubah menjadi "Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian".')) {
-          fileInputBukti.value = '';
-          return;
-        }
+  showConfirm(
+    'Apakah Anda yakin ingin mengupload Bukti Pendaftaran ini?<br><br>Status akan otomatis berubah menjadi "Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian".',
+    function() {
+      // Kode upload HANYA di dalam callback ini
+      const formData = new FormData();
+      formData.append('ajax_action', 'upload_bukti_pendaftaran');
+      formData.append('fileBuktiPendaftaran', file);
 
-        const formData = new FormData();
-        formData.append('ajax_action', 'upload_bukti_pendaftaran');
-        formData.append('fileBuktiPendaftaran', file);
+      btnUploadBukti.disabled = true;
+      btnUploadBukti.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Mengupload...';
 
-        btnUploadBukti.disabled = true;
-        btnUploadBukti.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Mengupload...';
+      fetch(window.location.href, {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showAlert('Bukti Pendaftaran berhasil diupload dan status diperbarui!', 'success');
 
-        fetch(window.location.href, {
-            method: 'POST',
-            body: formData
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              alert('Bukti Pendaftaran berhasil diupload dan status diperbarui ke "Bukti Pendaftaran Terbit dan Diajukan Ke Kementerian"!');
+            fileInputBukti.disabled = true;
+            btnUploadBukti.disabled = true;
+            btnUploadBukti.innerHTML = '<i class="bi bi-check-circle me-2"></i>Sudah Diupload';
+            btnUploadBukti.classList.remove('btn-success');
+            btnUploadBukti.classList.add('btn-outline-success');
 
-              // Disable input dan ubah tombol
-              fileInputBukti.disabled = true;
-              btnUploadBukti.disabled = true;
-              btnUploadBukti.innerHTML = '<i class="bi bi-check-circle me-2"></i>Sudah Diupload';
-              btnUploadBukti.classList.remove('btn-success');
-              btnUploadBukti.classList.add('btn-outline-success');
-
-              // Reload setelah 1 detik
-              setTimeout(() => location.reload(), 1000);
-            } else {
-              alert('Gagal: ' + data.message);
-              fileInputBukti.value = '';
-              btnUploadBukti.disabled = false;
-              btnUploadBukti.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Bukti Pendaftaran';
-            }
-          })
-          .catch(error => {
-            console.error('Error:', error);
-            alert('Terjadi kesalahan saat mengupload file.');
+            setTimeout(() => location.reload(), 1000);
+          } else {
+            showAlert('Gagal: ' + data.message, 'danger');
             fileInputBukti.value = '';
             btnUploadBukti.disabled = false;
             btnUploadBukti.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Bukti Pendaftaran';
-          });
-      }
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          showAlert('Terjadi kesalahan saat mengupload file.', 'danger');
+          fileInputBukti.value = '';
+          btnUploadBukti.disabled = false;
+          btnUploadBukti.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Bukti Pendaftaran';
+        });
+    },
+    function() {
+      // Callback saat user klik "Batal"
+      fileInputBukti.value = '';
+    }
+  );
+  
+}
 
       // Event submit form (backup jika ada yang langsung submit)
       formBuktiPendaftaran.addEventListener('submit', function(e) {
@@ -1615,7 +1716,7 @@ function getBadgeClass($status)
         if (file) {
           uploadBuktiPendaftaran(file);
         } else {
-          alert('Silakan pilih file terlebih dahulu!');
+          showAlert('Silakan pilih file terlebih dahulu!');
         }
       });
     }
@@ -1639,13 +1740,13 @@ function getBadgeClass($status)
             setStatus(data.new_status);
             return data;
           } else {
-            alert('Gagal mengupdate status: ' + data.message);
+            showAlert('Gagal mengupdate status: ' + data.message);
             throw new Error(data.message);
           }
         })
         .catch(error => {
           console.error('Error:', error);
-          alert('Terjadi kesalahan saat mengupdate status');
+          showAlert('Terjadi kesalahan saat mengupdate status');
           throw error;
         });
     }
@@ -1665,16 +1766,16 @@ function getBadgeClass($status)
         const alasan = inputAlasan.value.trim();
 
         if (alasan === '') {
-          alert('Mohon berikan alasan mengapa tidak bisa difasilitasi');
+          showAlert('Mohon berikan alasan mengapa tidak bisa difasilitasi');
           return;
         }
 
-        if (confirm('Apakah Anda yakin merek ini tidak bisa difasilitasi?')) {
+        showConfirm('Apakah Anda yakin merek ini tidak bisa difasilitasi?', function() {
           updateStatus('Tidak Bisa Difasilitasi', alasan)
             .then(() => {
               renderTidakBisaDifasilitasi(alasan);
             });
-        }
+        });
       });
     }
 
@@ -1811,13 +1912,13 @@ function getBadgeClass($status)
 
       // Handler Merek 1 - Langsung ke Surat Keterangan Difasilitasi
       document.getElementById('btnMerek1').addEventListener('click', function() {
-        if (confirm('Apakah Anda yakin memilih Merek 1 (Utama) untuk difasilitasi?')) {
+        showConfirm('Apakah Anda yakin memilih Merek 1 (Utama) untuk difasilitasi?', function() {
           updateStatus('Surat Keterangan Difasilitasi', '', 1)
             .then(() => {
-              alert('Merek 1 (Utama) telah dipilih. Silakan upload Surat Keterangan Difasilitasi.');
+              showAlert('Merek 1 (Utama) telah dipilih. Silakan upload Surat Keterangan Difasilitasi.');
               renderSuratKeterangan();
             });
-        }
+        });
       });
 
       // Handler Merek 2 - Perlu alasan
@@ -1841,22 +1942,22 @@ function getBadgeClass($status)
         const alasanMerek = document.getElementById('inputAlasanMerek').value.trim();
 
         if (!selectedMerek) {
-          alert('Silakan pilih Merek 2 atau Merek 3 terlebih dahulu');
+          showAlert('Silakan pilih Merek 2 atau Merek 3 terlebih dahulu');
           return;
         }
 
         if (alasanMerek === '') {
-          alert('Mohon berikan alasan mengapa memilih merek alternatif ini');
+          showAlert('Mohon berikan alasan mengapa memilih merek alternatif ini');
           return;
         }
 
-        if (confirm('Apakah Anda yakin memilih Merek Alternatif ' + selectedMerek + '?\n\nNotifikasi akan dikirim ke pemohon untuk konfirmasi.')) {
+        showConfirm('Apakah Anda yakin memilih Merek Alternatif ' + selectedMerek + '?\n\nNotifikasi akan dikirim ke pemohon untuk konfirmasi.', function() {
           updateStatus('Konfirmasi Lanjut', alasanMerek, selectedMerek)
             .then(() => {
-              alert('Notifikasi berhasil dikirim ke Pemohon. Menunggu konfirmasi dari pemohon untuk melanjutkan proses.');
+              showAlert('Notifikasi berhasil dikirim ke Pemohon. Menunggu konfirmasi dari pemohon untuk melanjutkan proses.');
               renderMenungguKonfirmasi(selectedMerek);
             });
-        }
+        });
       });
     }
 
@@ -1924,13 +2025,13 @@ function getBadgeClass($status)
       document.getElementById('btnKirimBukti').addEventListener('click', function() {
         const file = document.getElementById('fileBukti').files[0];
         if (!file) {
-          alert('Mohon pilih file terlebih dahulu');
+          showAlert('Mohon pilih file terlebih dahulu');
           return;
         }
 
         // Validasi ukuran file (max 5MB)
         if (file.size > 5 * 1024 * 1024) {
-          alert('Ukuran file maksimal 5MB!');
+          showAlert('Ukuran file maksimal 5MB!');
           return;
         }
 
@@ -1950,18 +2051,18 @@ function getBadgeClass($status)
           .then(response => response.json())
           .then(data => {
             if (data.success) {
-              alert('Bukti Pendaftaran berhasil dikirim ke pemohon!');
+              showAlert('Bukti Pendaftaran berhasil dikirim ke pemohon!');
               updateStatus('Diajukan ke Kementerian');
               renderDiajukanKementerian();
             } else {
-              alert('Gagal upload: ' + data.message);
+              showAlert('Gagal upload: ' + data.message);
               btnKirim.disabled = false;
               btnKirim.innerHTML = 'Kirim';
             }
           })
           .catch(error => {
             console.error('Error:', error);
-            alert('Terjadi kesalahan saat upload file');
+            showAlert('Terjadi kesalahan saat upload file');
             btnKirim.disabled = false;
             btnKirim.innerHTML = 'Kirim';
           });
@@ -1984,13 +2085,13 @@ function getBadgeClass($status)
       document.getElementById('btnKirimHasil').addEventListener('click', function() {
         const file = document.getElementById('fileHasil').files[0];
         if (!file) {
-          alert('Mohon pilih file terlebih dahulu');
+          showAlert('Mohon pilih file terlebih dahulu');
           return;
         }
 
         // Validasi ukuran file (max 5MB)
         if (file.size > 5 * 1024 * 1024) {
-          alert('Ukuran file maksimal 5MB!');
+          showAlert('Ukuran file maksimal 5MB!');
           return;
         }
 
@@ -2010,18 +2111,18 @@ function getBadgeClass($status)
           .then(response => response.json())
           .then(data => {
             if (data.success) {
-              alert('Sertifikat berhasil dikirim ke pemohon!');
+              showAlert('Sertifikat berhasil dikirim ke pemohon!');
               updateStatus('Hasil Verifikasi Kementerian');
               renderHasilVerifikasi();
             } else {
-              alert('Gagal upload: ' + data.message);
+              showAlert('Gagal upload: ' + data.message);
               btnKirim.disabled = false;
               btnKirim.innerHTML = 'Kirim';
             }
           })
           .catch(error => {
             console.error('Error:', error);
-            alert('Terjadi kesalahan saat upload file');
+            showAlert('Terjadi kesalahan saat upload file');
             btnKirim.disabled = false;
             btnKirim.innerHTML = 'Kirim';
           });
@@ -2367,11 +2468,11 @@ function getBadgeClass($status)
     </div>
   `;
 
-        // Handler Upload Sertifikat
+      // Handler Upload Sertifikat
       const formSertifikat = document.getElementById('formSertifikat');
       if (formSertifikat) {
         const fileInputSertifikat = document.getElementById('fileSertifikat');
-        
+
         // Event ketika file dipilih - langsung tampilkan preview
         fileInputSertifikat.addEventListener('change', function() {
           const file = this.files[0];
@@ -2380,7 +2481,7 @@ function getBadgeClass($status)
 
           // Validasi ukuran
           if (file.size > 10 * 1024 * 1024) {
-            alert('Ukuran file maksimal 10MB!');
+            showAlert('Ukuran file maksimal 10MB!');
             this.value = '';
             return;
           }
@@ -2390,7 +2491,7 @@ function getBadgeClass($status)
           const fileExt = file.name.split('.').pop().toLowerCase();
 
           if (!allowedExt.includes(fileExt)) {
-            alert('Format file harus PDF!');
+            showAlert('Format file harus PDF!');
             this.value = '';
             return;
           }
@@ -2459,50 +2560,53 @@ function getBadgeClass($status)
                 </a>
               `;
             }
-          }, { once: true });
+          }, {
+            once: true
+          });
         }
 
         function uploadSertifikat(file) {
-          if (!confirm('Apakah Anda yakin ingin mengupload Sertifikat Merek ini?')) {
-            fileInputSertifikat.value = '';
-            return;
-          }
+          showConfirm('Apakah Anda yakin ingin mengupload Sertifikat Merek ini?', function() {
+            // Kode upload HARUS di dalam callback ini
+            const formData = new FormData();
+            formData.append('id_pendaftaran', ID_PENDAFTARAN);
+            formData.append('id_jenis_file', 7); // 7 = Sertifikat Terbit
+            formData.append('file', file);
 
-          const formData = new FormData();
-          formData.append('id_pendaftaran', ID_PENDAFTARAN);
-          formData.append('id_jenis_file', 7); // 7 = Sertifikat Terbit
-          formData.append('file', file);
+            const btnUpload = document.getElementById('btnUploadSertifikat');
+            btnUpload.disabled = true;
+            btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Mengupload...';
 
-          const btnUpload = document.getElementById('btnUploadSertifikat');
-          btnUpload.disabled = true;
-          btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Mengupload...';
-
-          fetch('process/upload_lampiran.php', {
-              method: 'POST',
-              body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                updateStatus('Hasil Verifikasi Kementerian')
-                  .then(() => {
-                    alert('Sertifikat berhasil diupload! Status diperbarui ke "Hasil Verifikasi Kementerian".');
-                    location.reload();
-                  });
-              } else {
-                alert('Gagal upload: ' + data.message);
+            fetch('process/upload_lampiran.php', {
+                method: 'POST',
+                body: formData
+              })
+              .then(response => response.json())
+              .then(data => {
+                if (data.success) {
+                  updateStatus('Hasil Verifikasi Kementerian')
+                    .then(() => {
+                      showAlert('Sertifikat berhasil diupload! Status diperbarui ke "Hasil Verifikasi Kementerian".', 'success');
+                      setTimeout(() => location.reload(), 2000);
+                    });
+                } else {
+                  showAlert('Gagal upload: ' + data.message, 'danger');
+                  fileInputSertifikat.value = '';
+                  btnUpload.disabled = false;
+                  btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Sertifikat';
+                }
+              })
+              .catch(error => {
+                console.error('Error:', error);
+                showAlert('Terjadi kesalahan saat upload file', 'danger');
                 fileInputSertifikat.value = '';
                 btnUpload.disabled = false;
                 btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Sertifikat';
-              }
-            })
-            .catch(error => {
-              console.error('Error:', error);
-              alert('Terjadi kesalahan saat upload file');
-              fileInputSertifikat.value = '';
-              btnUpload.disabled = false;
-              btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Sertifikat';
-            });
+              });
+          }, function() {
+            // Callback saat user klik "Batal"
+            fileInputSertifikat.value = '';
+          });
         }
 
         // Event submit form (backup)
@@ -2512,7 +2616,7 @@ function getBadgeClass($status)
           if (file) {
             uploadSertifikat(file);
           } else {
-            alert('Silakan pilih file terlebih dahulu!');
+            showAlert('Silakan pilih file terlebih dahulu!');
           }
         });
       }
@@ -2521,7 +2625,7 @@ function getBadgeClass($status)
       const formPenolakan = document.getElementById('formPenolakan');
       if (formPenolakan) {
         const fileInputPenolakan = document.getElementById('filePenolakan');
-        
+
         // Event ketika file dipilih - langsung tampilkan preview
         fileInputPenolakan.addEventListener('change', function() {
           const file = this.files[0];
@@ -2530,7 +2634,7 @@ function getBadgeClass($status)
 
           // Validasi ukuran
           if (file.size > 10 * 1024 * 1024) {
-            alert('Ukuran file maksimal 10MB!');
+            showAlert('Ukuran file maksimal 10MB!');
             this.value = '';
             return;
           }
@@ -2540,7 +2644,7 @@ function getBadgeClass($status)
           const fileExt = file.name.split('.').pop().toLowerCase();
 
           if (!allowedExt.includes(fileExt)) {
-            alert('Format file harus PDF!');
+            showAlert('Format file harus PDF!');
             this.value = '';
             return;
           }
@@ -2609,50 +2713,53 @@ function getBadgeClass($status)
                 </a>
               `;
             }
-          }, { once: true });
+          }, {
+            once: true
+          });
         }
 
         function uploadPenolakan(file) {
-          if (!confirm('Apakah Anda yakin ingin mengupload Surat Penolakan ini?')) {
-            fileInputPenolakan.value = '';
-            return;
-          }
+          showConfirm('Apakah Anda yakin ingin mengupload Surat Penolakan ini?', function() {
+            // Kode upload HARUS di dalam callback ini
+            const formData = new FormData();
+            formData.append('id_pendaftaran', ID_PENDAFTARAN);
+            formData.append('id_jenis_file', 8); // 8 = Surat Penolakan
+            formData.append('file', file);
 
-          const formData = new FormData();
-          formData.append('id_pendaftaran', ID_PENDAFTARAN);
-          formData.append('id_jenis_file', 8); // 8 = Surat Penolakan
-          formData.append('file', file);
+            const btnUpload = document.getElementById('btnUploadPenolakan');
+            btnUpload.disabled = true;
+            btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Mengupload...';
 
-          const btnUpload = document.getElementById('btnUploadPenolakan');
-          btnUpload.disabled = true;
-          btnUpload.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Mengupload...';
-
-          fetch('process/upload_lampiran.php', {
-              method: 'POST',
-              body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                updateStatus('Hasil Verifikasi Kementerian')
-                  .then(() => {
-                    alert('Surat Penolakan berhasil diupload! Status diperbarui ke "Hasil Verifikasi Kementerian".');
-                    location.reload();
-                  });
-              } else {
-                alert('Gagal upload: ' + data.message);
+            fetch('process/upload_lampiran.php', {
+                method: 'POST',
+                body: formData
+              })
+              .then(response => response.json())
+              .then(data => {
+                if (data.success) {
+                  updateStatus('Hasil Verifikasi Kementerian')
+                    .then(() => {
+                      showAlert('Surat Penolakan berhasil diupload! Status diperbarui ke "Hasil Verifikasi Kementerian".', 'success');
+                      setTimeout(() => location.reload(), 2000);
+                    });
+                } else {
+                  showAlert('Gagal upload: ' + data.message, 'danger');
+                  fileInputPenolakan.value = '';
+                  btnUpload.disabled = false;
+                  btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Penolakan';
+                }
+              })
+              .catch(error => {
+                console.error('Error:', error);
+                showAlert('Terjadi kesalahan saat upload file', 'danger');
                 fileInputPenolakan.value = '';
                 btnUpload.disabled = false;
                 btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Penolakan';
-              }
-            })
-            .catch(error => {
-              console.error('Error:', error);
-              alert('Terjadi kesalahan saat upload file');
-              fileInputPenolakan.value = '';
-              btnUpload.disabled = false;
-              btnUpload.innerHTML = '<i class="bi bi-upload me-2"></i>Upload Surat Penolakan';
-            });
+              });
+          }, function() {
+            // Callback saat user klik "Batal"
+            fileInputPenolakan.value = '';
+          });
         }
 
         // Event submit form (backup)
@@ -2662,7 +2769,7 @@ function getBadgeClass($status)
           if (file) {
             uploadPenolakan(file);
           } else {
-            alert('Silakan pilih file terlebih dahulu!');
+            showAlert('Silakan pilih file terlebih dahulu!');
           }
         });
       }

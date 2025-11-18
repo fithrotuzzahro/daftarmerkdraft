@@ -7,6 +7,8 @@
   <title>Registrasi - Disperindag Sidoarjo</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css">
   <link rel="stylesheet" href="assets/css/registrasi.css">
 </head>
 
@@ -33,27 +35,48 @@
         <div class="mb-3">
           <label class="form-label">Alamat Pemilik</label>
           <div class="row">
-            <div class="col-md-6">
-              <small class="text-muted">RT/RW</small>
-              <input type="text" class="form-control mb-3" id="rt_rw" name="rt_rw" placeholder="Contoh: 002/006" maxlength="7" required>
-              <small class="text-muted d-block mt-1">Format otomatis: 002/006</small>
+            <div class="col-md-6 mb-3">
+              <label for="provinsi" class="form-label">Provinsi</label>
+              <select class="form-select select2-dropdown" id="provinsi" name="provinsi" required>
+                <option value="">Pilih Provinsi</option>
+              </select>
             </div>
+            <div class="col-md-6 mb-3">
+              <label for="kabupaten" class="form-label">Kabupaten/Kota</label>
+              <select class="form-select select2-dropdown" id="kabupaten" name="kabupaten" required disabled>
+                <option value="">Pilih Kabupaten/Kota</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="kecamatan" class="form-label">Kecamatan</label>
+              <select class="form-select select2-dropdown" id="kecamatan" name="kecamatan" required disabled>
+                <option value="">Pilih Kecamatan</option>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="kel_desa" class="form-label">Kelurahan/Desa</label>
+              <select class="form-select select2-dropdown" id="kel_desa" name="kel_desa" required disabled>
+                <option value="">Pilih Kelurahan/Desa</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row">
             <div class="col-md-6">
-              <small class="text-muted">Kelurahan/Desa</small>
-              <input type="text" class="form-control" placeholder="" id="kel_desa" name="kel_desa" required>
+              <label for="rt_rw" class="form-label">RT/RW</label>
+              <input type="text" class="form-control" id="rt_rw" name="rt_rw" placeholder="Contoh: 002/006" maxlength="7" required>
+              <small class="text-muted d-block mt-1">Format otomatis: 002/006</small>
             </div>
           </div>
         </div>
 
         <div class="mb-3">
-          <label for="kecamatan" class="form-label">Kecamatan</label>
-          <input type="text" class="form-control" id="kecamatan" name="kecamatan" required>
-        </div>
-
-        <div class="mb-3">
           <label for="telepon" class="form-label">Nomor WhatsApp</label>
-          <input type="tel" class="form-control" id="telepon" name="telepon" placeholder="08xxxxxxxxxx" required>
-          <small class="text-muted">Contoh: 081234567890 (digunakan untuk login)</small>
+          <input type="tel" class="form-control" id="telepon" name="telepon" placeholder="628xxxxxxxxxx" required>
+          <small class="text-muted">Contoh: 6281234567890 (digunakan untuk login)</small>
         </div>
 
         <div class="mb-3">
@@ -70,19 +93,15 @@
               <span id="fileName" class="file-name">Tidak ada file yang dipilih.</span>
             </div>
             
-            <!-- Preview Container di dalam file-upload-container -->
             <div id="ktpPreviewContainer" class="ktp-preview-wrapper">
-              <!-- Image Preview -->
               <img id="ktpPreviewImg" class="ktp-preview-img" alt="Preview KTP">
               
-              <!-- PDF Preview -->
               <div id="pdfPreviewBox" class="pdf-preview-box">
                 <div class="pdf-icon">📄</div>
                 <p class="mb-0"><strong id="pdfFileName"></strong></p>
                 <small class="text-muted">File PDF siap diupload</small>
               </div>
 
-              <!-- Actions -->
               <div class="preview-actions">
                 <span class="file-size-info" id="fileSizeInfo"></span>
                 <button type="button" class="btn-remove-file" onclick="clearFilePreview()">Hapus File</button>
@@ -140,7 +159,9 @@
     </div>
   </div>
 
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
   <script src="assets/js/registrasi.js"></script>
 
 </body>

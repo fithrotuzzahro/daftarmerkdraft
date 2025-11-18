@@ -10,8 +10,10 @@ section {
   scroll-margin-top: 50px;
 }
 
-
-
+body.modal-open {
+  overflow: auto !important;
+  padding-right: 0 !important;
+}
 
 .hero-section {
   background: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.8)), url(../img/bg.png);

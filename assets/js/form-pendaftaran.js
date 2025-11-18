@@ -1,3 +1,76 @@
+// ============================================
+// BOOTSTRAP ALERT & CONFIRM MODALS
+// ============================================
+function showAlert(message, type = 'warning') {
+  const icon = type === 'danger' ? '❌' : type === 'success' ? '✅' : '⚠️';
+
+  const alertModal = `
+    <div class="modal fade" id="alertModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+          <div class="modal-body text-center p-4">
+            <div class="fs-1 mb-3">${icon}</div>
+            <p class="mb-0" style="white-space: pre-line;">${message}</p>
+          </div>
+          <div class="modal-footer border-0 justify-content-center">
+            <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const existingModal = document.getElementById('alertModal');
+  if (existingModal) existingModal.remove();
+
+  document.body.insertAdjacentHTML('beforeend', alertModal);
+  const modal = new bootstrap.Modal(document.getElementById('alertModal'));
+  modal.show();
+
+  document.getElementById('alertModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
+}
+
+function showConfirm(message, onConfirm, onCancel = null) {
+  const confirmModal = `
+    <div class="modal fade" id="confirmModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-body text-center p-4">
+            <div class="fs-1 mb-3">⚠️</div>
+            <p class="mb-0" style="white-space: pre-line;">${message}</p>
+          </div>
+          <div class="modal-footer border-0 justify-content-center gap-2">
+            <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal" id="btnModalCancel">Batal</button>
+            <button type="button" class="btn btn-primary px-4" id="btnModalConfirm">Ya, Lanjutkan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const existingModal = document.getElementById('confirmModal');
+  if (existingModal) existingModal.remove();
+
+  document.body.insertAdjacentHTML('beforeend', confirmModal);
+  const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+  modal.show();
+
+  document.getElementById('btnModalConfirm').addEventListener('click', function() {
+    modal.hide();
+    if (onConfirm) onConfirm();
+  });
+
+  document.getElementById('btnModalCancel').addEventListener('click', function() {
+    if (onCancel) onCancel();
+  });
+
+  document.getElementById('confirmModal').addEventListener('hidden.bs.modal', function() {
+    this.remove();
+  });
+}
+
 // ===== PRODUK TABLE MANAGEMENT =====
 document.getElementById('addProdukRow').addEventListener('click', function () {
     const tbody = document.getElementById('produkTableBody');
@@ -185,7 +258,7 @@ function handleFileInput(inputElement, storageKey, previewContainerId, maxFiles 
     const files = Array.from(inputElement.files);
     
     if (fileStorage[storageKey].length + files.length > maxFiles) {
-        alert(`Maksimal ${maxFiles} file untuk ${storageKey.replace(/_/g, ' ')}`);
+        showAlert(`Maksimal ${maxFiles} file untuk ${storageKey.replace(/_/g, ' ')}`);
         inputElement.value = '';
         return;
     }
@@ -219,7 +292,6 @@ function updateFilePreview(storageKey, containerId) {
         previewItem.className = 'preview-item';
         previewItem.style.cssText = 'position: relative; width: 120px; margin: 5px; cursor: pointer;';
         
-        // Add click event for preview modal
         previewItem.addEventListener('click', function(e) {
             if (!e.target.closest('.remove-preview')) {
                 showFilePreview(file, file.name);
@@ -236,7 +308,6 @@ function updateFilePreview(storageKey, containerId) {
                     <div style="font-size: 10px; text-align: center; color: #6c757d;">${formatFileSize(file.size)}</div>
                 `;
                 
-                // Add hover effect
                 const img = previewItem.querySelector('img');
                 previewItem.addEventListener('mouseenter', () => {
                     img.style.transform = 'scale(1.05)';
@@ -257,7 +328,6 @@ function updateFilePreview(storageKey, containerId) {
                 <div style="font-size: 10px; text-align: center; color: #6c757d;">${formatFileSize(file.size)}</div>
             `;
             
-            // Add hover effect for PDF preview
             const pdfPreview = previewItem.querySelector('.pdf-preview');
             previewItem.addEventListener('mouseenter', () => {
                 pdfPreview.style.transform = 'scale(1.05)';
@@ -298,13 +368,13 @@ function setupDragDropWithStorage(dropZone, fileInput, previewContainer, storage
         const droppedFiles = Array.from(e.dataTransfer.files);
         
         if (fileStorage[storageKey].length + droppedFiles.length > maxFiles) {
-            alert(`Maksimal ${maxFiles} file. Anda sudah memiliki ${fileStorage[storageKey].length} file.`);
+            showAlert(`Maksimal ${maxFiles} file. Anda sudah memiliki ${fileStorage[storageKey].length} file.`);
             return;
         }
         
         for (let file of droppedFiles) {
             if (file.size > maxSizeMB * 1024 * 1024) {
-                alert(`File ${file.name} melebihi ${maxSizeMB} MB.`);
+                showAlert(`File ${file.name} melebihi ${maxSizeMB} MB.`, 'danger');
                 return;
             }
             dt.items.add(file);
@@ -318,14 +388,14 @@ function setupDragDropWithStorage(dropZone, fileInput, previewContainer, storage
         const files = Array.from(fileInput.files);
         
         if (fileStorage[storageKey].length + files.length > maxFiles) {
-            alert(`Maksimal ${maxFiles} file. Anda sudah memiliki ${fileStorage[storageKey].length} file.`);
+            showAlert(`Maksimal ${maxFiles} file. Anda sudah memiliki ${fileStorage[storageKey].length} file.`);
             fileInput.value = '';
             return;
         }
         
         for (let file of files) {
             if (file.size > maxSizeMB * 1024 * 1024) {
-                alert(`File ${file.name} melebihi ${maxSizeMB} MB.`);
+                showAlert(`File ${file.name} melebihi ${maxSizeMB} MB.`, 'danger');
                 fileInput.value = '';
                 return;
             }
@@ -335,105 +405,189 @@ function setupDragDropWithStorage(dropZone, fileInput, previewContainer, storage
     });
 }
 
-// ===== LEGALITAS SYSTEM (COMPLETELY REWRITTEN) =====
-function updateLegalitasUploads() {
-    const legalitasCheckboxes = document.querySelectorAll('.legalitas-checkbox');
-    const legalitasContainer = document.getElementById('legalitasUploadContainer');
-    const legalitasLainInput = document.querySelector('input[name="legalitas_lain"]');
+// ===== LEGALITAS SYSTEM =====
+const legalitasFiles = [];
+
+function setupLegalitasDragDrop() {
+    const dropZone = document.getElementById('legalitasDropZone');
+    const fileInput = document.getElementById('legalitas-file-input');
     
-    legalitasContainer.innerHTML = '';
+    if (!dropZone || !fileInput) return;
     
-    // Handle checkbox legalitas
-    legalitasCheckboxes.forEach((checkbox, realIndex) => {
-        if (checkbox.checked) {
-            const legalitasName = checkbox.value;
-            const storageKey = `legalitas_${realIndex}`;
-            
-            if (!fileStorage[storageKey]) {
-                fileStorage[storageKey] = [];
-            }
-            
-            const uploadSection = document.createElement('div');
-            uploadSection.className = 'legalitas-upload-section';
-            uploadSection.innerHTML = `
-                <h6><i class="fas fa-file-upload me-2"></i>Upload File ${legalitasName}</h6>
-                <div class="file-drop-zone legalitas-drop-zone" id="legalitas-drop-${realIndex}">
-                    <i class="fas fa-cloud-upload-alt"></i>
-                    <p><strong>Seret & Lepas file di sini</strong><br>atau klik untuk memilih file</p>
-                    <small>Upload maksimal 3 file PDF. Maks 1 MB per file</small>
-                    <input type="file" 
-                           name="legalitas_files_${realIndex}[]" 
-                           id="legalitas-input-${realIndex}" 
-                           class="legalitas-file-input" 
-                           accept=".pdf" 
-                           multiple 
-                           hidden>
-                </div>
-                <div class="preview-container" id="legalitas-preview-${realIndex}"></div>
-            `;
-            legalitasContainer.appendChild(uploadSection);
-            
-            setTimeout(() => {
-                setupDragDropWithStorage(
-                    document.getElementById(`legalitas-drop-${realIndex}`),
-                    document.getElementById(`legalitas-input-${realIndex}`),
-                    document.getElementById(`legalitas-preview-${realIndex}`),
-                    storageKey, 3, 1
-                );
-            }, 100);
-        }
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
     });
     
-    // Handle legalitas lainnya
-    if (legalitasLainInput && legalitasLainInput.value.trim() !== '') {
-        const storageKey = 'legalitas_lain';
-        
-        if (!fileStorage[storageKey]) {
-            fileStorage[storageKey] = [];
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('drag-over');
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        handleLegalitasFiles(Array.from(e.dataTransfer.files));
+    });
+    
+    fileInput.addEventListener('change', (e) => {
+        handleLegalitasFiles(Array.from(e.target.files));
+        fileInput.value = '';
+    });
+}
+
+function handleLegalitasFiles(files) {
+    files.forEach(file => {
+        if (file.size > 1 * 1024 * 1024) {
+            showAlert(`File ${file.name} melebihi 1 MB.`, 'danger');
+            return;
         }
         
-        const uploadSection = document.createElement('div');
-        uploadSection.className = 'legalitas-upload-section';
-        uploadSection.innerHTML = `
-            <h6><i class="fas fa-file-upload me-2"></i>Upload File ${legalitasLainInput.value}</h6>
-            <div class="file-drop-zone legalitas-drop-zone" id="legalitas-drop-lain">
-                <i class="fas fa-cloud-upload-alt"></i>
-                <p><strong>Seret & Lepas file di sini</strong><br>atau klik untuk memilih file</p>
-                <small>Upload maksimal 3 file (PDF. Maks 1 MB per file</small>
-                <input type="file" 
-                       name="legalitas_files_lain[]" 
-                       id="legalitas-input-lain" 
-                       class="legalitas-file-input" 
-                       accept=".pdf" 
-                       multiple 
-                       hidden>
-            </div>
-            <div class="preview-container" id="legalitas-preview-lain"></div>
-        `;
-        legalitasContainer.appendChild(uploadSection);
+        const validExtensions = ['pdf', 'jpg', 'jpeg', 'png'];
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!validExtensions.includes(ext)) {
+            showAlert(`File ${file.name} memiliki format tidak valid. Gunakan PDF, JPG, atau PNG.`, 'danger');
+            return;
+        }
         
-        setTimeout(() => {
-            setupDragDropWithStorage(
-                document.getElementById('legalitas-drop-lain'),
-                document.getElementById('legalitas-input-lain'),
-                document.getElementById('legalitas-preview-lain'),
-                storageKey, 3, 1
-            );
-        }, 100);
+        const isDuplicate = legalitasFiles.some(f => 
+            f.file.name === file.name && f.file.size === file.size
+        );
+        
+        if (isDuplicate) {
+            showAlert(`File ${file.name} sudah diupload.`, 'warning');
+            return;
+        }
+        
+        legalitasFiles.push({
+            id: Date.now() + Math.random(),
+            file: file,
+            jenisFileId: null,
+            jenisFileName: null
+        });
+    });
+    
+    renderLegalitasFileList();
+}
+
+function renderLegalitasFileList() {
+    const container = document.getElementById('legalitasFileList');
+    
+    if (legalitasFiles.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    let html = '<div class="table-responsive mt-3"><table class="table table-bordered table-hover">';
+    html += '<thead class="table-light">';
+    html += '<tr>';
+    html += '<th style="width: 5%">No</th>';
+    html += '<th style="width: 35%">Nama File</th>';
+    html += '<th style="width: 10%">Ukuran</th>';
+    html += '<th style="width: 30%">Jenis Legalitas <span class="text-danger">*</span></th>';
+    html += '<th style="width: 10%">Aksi</th>';
+    html += '</tr>';
+    html += '</thead>';
+    html += '<tbody>';
+    
+    legalitasFiles.forEach((item, index) => {
+        html += `<tr id="legalitas-row-${item.id}">`;
+        html += `<td class="text-center">${index + 1}</td>`;
+        html += `<td><small>${item.file.name}</small></td>`;
+        html += `<td><small>${formatFileSize(item.file.size)}</small></td>`;
+        html += `<td>`;
+        html += `<select class="form-select form-select-sm" onchange="selectJenisFile(${item.id}, this.value)" required>`;
+        html += `<option value="">Pilih Jenis Legalitas</option>`;
+        
+        masterLegalitas.forEach(master => {
+            const selected = item.jenisFileId == master.id_jenis_file ? 'selected' : '';
+            html += `<option value="${master.id_jenis_file}" ${selected}>${master.nama_jenis_file}</option>`;
+        });
+        
+        html += `</select>`;
+        html += `</td>`;
+        html += `<td class="text-center">`;
+        html += `<button type="button" class="btn btn-sm btn-info me-1" onclick="previewLegalitasFile(${item.id})">`;
+        html += `<i class="fas fa-eye"></i>`;
+        html += `</button>`;
+        html += `<button type="button" class="btn btn-sm btn-danger" onclick="removeLegalitasFile(${item.id})">`;
+        html += `<i class="fas fa-trash"></i>`;
+        html += `</button>`;
+        html += `</td>`;
+        html += `</tr>`;
+    });
+    
+    html += '</tbody>';
+    html += '</table></div>';
+    
+    container.innerHTML = html;
+}
+
+function previewLegalitasFile(fileId) {
+    const item = legalitasFiles.find(f => f.id === fileId);
+    if (!item) return;
+    
+    showFilePreview(item.file, item.file.name);
+}
+
+function selectJenisFile(fileId, jenisFileId) {
+    const item = legalitasFiles.find(f => f.id === fileId);
+    if (!item) return;
+    
+    item.jenisFileId = jenisFileId;
+    
+    const master = masterLegalitas.find(m => m.id_jenis_file == jenisFileId);
+    item.jenisFileName = master ? master.nama_jenis_file : null;
+}
+
+function removeLegalitasFile(fileId) {
+    const index = legalitasFiles.findIndex(f => f.id === fileId);
+    if (index > -1) {
+        legalitasFiles.splice(index, 1);
+        renderLegalitasFileList();
     }
 }
 
-const legalitasLainInput = document.querySelector('input[name="legalitas_lain"]');
-if (legalitasLainInput) {
-    legalitasLainInput.addEventListener('input', function () {
-        clearTimeout(window.legalitasLainTimeout);
-        window.legalitasLainTimeout = setTimeout(() => {
-            updateLegalitasUploads();
-        }, 500);
+function prepareLegalitasForSubmission() {
+    const hiddenContainer = document.getElementById('legalitasHiddenInputs');
+    hiddenContainer.innerHTML = '';
+    
+    for (let item of legalitasFiles) {
+        if (!item.jenisFileId) {
+            showAlert('Semua file legalitas harus memilih jenis legalitasnya!', 'danger');
+            return false;
+        }
+    }
+    
+    const groupedFiles = {};
+    legalitasFiles.forEach(item => {
+        if (!groupedFiles[item.jenisFileId]) {
+            groupedFiles[item.jenisFileId] = [];
+        }
+        groupedFiles[item.jenisFileId].push(item.file);
     });
+    
+    Object.keys(groupedFiles).forEach(jenisFileId => {
+        const dataTransfer = new DataTransfer();
+        
+        groupedFiles[jenisFileId].forEach(file => {
+            dataTransfer.items.add(file);
+        });
+        
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.name = `legalitas_files_${jenisFileId}[]`;
+        input.multiple = true;
+        input.files = dataTransfer.files;
+        
+        hiddenContainer.appendChild(input);
+    });
+    
+    return true;
 }
 
-// ===== FORM SUBMISSION =====
+// ===== FORM SUBMISSION - FIXED VERSION =====
 function handleFormSubmit(e) {
     e.preventDefault();
     
@@ -460,7 +614,7 @@ function handleFormSubmit(e) {
     });
     
     if (produkData.length === 0) {
-        alert('Mohon isi minimal 1 data produk dengan lengkap!');
+        showAlert('Mohon isi minimal 1 data produk dengan lengkap!');
         return false;
     }
     
@@ -478,69 +632,131 @@ function handleFormSubmit(e) {
     
     for (let [key, label] of Object.entries(requiredFiles)) {
         if (!fileStorage[key] || fileStorage[key].length === 0) {
-            alert(`${label} wajib diupload!`);
+            showAlert(`${label} wajib diupload!`);
             return false;
         }
     }
     
+    // 3. Validasi legalitas
+    if (legalitasFiles.length === 0) {
+        showAlert('Minimal upload 1 file legalitas!', 'warning');
+        return false;
+    }
+    
+    if (!prepareLegalitasForSubmission()) {
+        return false;
+    }
+    
     console.log('File storage keys:', Object.keys(fileStorage).filter(k => fileStorage[k].length > 0));
     
-    // 3. Transfer files ke input form
+    // 4. FIXED: Transfer files ke form inputs
+    const form = document.getElementById('formPendaftaran');
+    
+    // Hapus input file lama yang mungkin ada
+    form.querySelectorAll('input[type="file"][data-temp-input="true"]').forEach(el => el.remove());
+    
     Object.keys(fileStorage).forEach(storageKey => {
         if (fileStorage[storageKey] && fileStorage[storageKey].length > 0) {
-            let inputName;
+            const originalInput = form.querySelector(`input[name="${storageKey}[]"], input[name="${storageKey}"]`);
             
-            // Tentukan nama input berdasarkan storage key
-            if (storageKey.startsWith('logo')) {
-                inputName = storageKey; // logo1, logo2, logo3
-            } else if (storageKey.startsWith('legalitas_')) {
-                if (storageKey === 'legalitas_lain') {
-                    inputName = 'legalitas_files_lain[]';
-                } else {
-                    // legalitas_0, legalitas_1, dst
-                    const index = storageKey.split('_')[1];
-                    inputName = `legalitas_files_${index}[]`;
-                }
-            } else {
-                inputName = `${storageKey}[]`; // nib_files[], foto_produk[], foto_proses[]
-            }
-            
-            const input = document.querySelector(`input[name="${inputName}"]`);
-            
-            if (input) {
+            if (originalInput) {
+                // Buat DataTransfer baru
                 const dataTransfer = new DataTransfer();
                 fileStorage[storageKey].forEach(file => {
                     dataTransfer.items.add(file);
                 });
-                input.files = dataTransfer.files;
-                console.log(`✓ Transferred ${fileStorage[storageKey].length} files to ${inputName}`);
-            } else {
-                console.warn(`✗ Input not found: ${inputName}`);
+                
+                // Set files ke input asli
+                originalInput.files = dataTransfer.files;
+                console.log(`✓ Transferred ${fileStorage[storageKey].length} files to ${originalInput.name}`);
             }
         }
     });
     
-    // 4. Konfirmasi
-    const confirmed = confirm(
+    // 5. Konfirmasi
+    showConfirm(
         'Apakah Anda yakin semua data yang diisi sudah benar dan lengkap?\n\n' +
         'Setiap akun hanya dapat melakukan 1 kali pendaftaran merek.\n\n' +
-        'Data yang sudah dikirim tidak dapat diubah.'
+        'Data yang sudah dikirim tidak dapat diubah.',
+        function() {
+            const btnSubmit = document.getElementById('btnSubmit');
+            btnSubmit.disabled = true;
+            btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin pe-2"></i> Mengirim Data...';
+            window.formChanged = false;
+            
+            console.log('=== SUBMITTING FORM ===');
+            
+            // CRITICAL FIX: Submit form secara native
+            form.submit();
+        },
+        function() {
+            console.log('User cancelled submission');
+        }
     );
     
-    if (!confirmed) {
-        console.log('User cancelled submission');
-        return false;
+    return false;
+}
+
+// ===== KELURAHAN/DESA DATA =====
+const desaKelurahan = {
+    "Sidoarjo": ["Sidoarjo", "Lemahputro", "Magersari", "Gebang", "Celep", "Bulusidokare", "Urangagung", "Banjarbendo", "Blurukidul", "Cemengbakalan", "Jati", "Kemiri", "Lebo", "Rangkalkidul", "Sarirogo", "Suko", "Sumput", "Cemengkalan", "Pekawuman", "Pucang", "Pucanganom", "Sekardangan", "Sidoklumpuk", "Sidokumpul"],
+    "Buduran": ["Buduran", "Sawohan", "Siwalanpanji", "Prasung", "Banjarkemantren", "Banjarsari", "Damarsi", "Dukuhtengah", "Entalsewu", "Pagerwojo", "Sidokerto", "Sidomulyo", "Sidokepung", "Sukorejo", "Wadungasin"],
+    "Candi": ["Candi", "Durungbanjar", "Larangan", "Sumokali", "Sepande", "Kebonsari", "Kedensari", "Bligo", "Balongdowo", "Balonggabus", "Durungbanjar", "Durungbedug", "Gelam", "Jambangan", "Kalipecabean", "Karangtanjung", "Kebonsari", "Kedungkendo", "Kedungpeluk", "Kendalpencabean", "Klurak", "Ngampelsari", "Sidodadi", "Sugihwaras", "Sumorame", "Tenggulunan", "Wedoroklurak"],
+    "Porong": ["Porong", "Kebonagung", "Kesambi", "Plumbon", "Pesawahan", "Gedang", "Juwetkenongo", "Kedungboto", "Wunut", "Pamotan", "Kebakalan", "Gempol Pasargi", "Glagaharum", "Lajuk", "Candipari"],
+    "Krembung": ["Krembung", "Balanggarut", "Cangkring", "Gading", "Jenggot", "Kandangan", "Kedungrawan", "Kedungsumur", "Keperkeret", "Lemujut", "Ploso", "Rejeni", "Tambakrejo", "Tanjekwagir", "Wangkal", "Wonomlati", "Waung", "Mojoruntut"],
+    "Tulangan": ["Tulangan", "Jiken", "Kajeksan", "Kebaran", "Kedondong", "Kepatihan", "Kepunten", "Medalem", "Pangkemiri", "Sudimoro", "Tlasih", "Gelang", "Kepadangan", "Grabagan", "Singopadu", "Kemantren", "Janti", "Modong", "Grogol", "Kenongo", "Grinting"],
+    "Tanggulangin": ["kalisampurno", "kedensari", "Ganggang Pnjang", "Randegan", "Kalitengah", "Kedung Banteng", "Putat", "Ketapang", "Kalidawir", "Ketegan", "Banjar Panji", "Gempolsari", "Sentul", "Penatarsewu", "Banjarsari", "Ngaban", "Boro", "Kludan"],
+    "Jabon": ["Trompoasri", "Kedung Pandan", "Permisan", "Semambung", "Pangrih", "Kupang", "Tambak Kalisogo", "Kedungrejo", "Kedungcangkring", "Keboguyang", "Jemirahan", "Balongtani", "dukuhsari"],
+    "Krian": ["Sidomojo", "Sidomulyo", "Sidorejo", "Tempel", "Terik", "Terungkulon", "Terungwetan", "Tropodo", "Watugolong", "Krian", "Kemasan", "Tambakkemeraan", "Sedenganmijen", "Bareng Krajan", "Keraton", "Keboharan", "Katerungan", "Jeruk Gamping", "Junwangi", "Jatikalang", "Gamping", "Ponokawan"],
+    "Balongbendo": ["Balongbendo", "", "WonoKupang", "Kedungsukodani", "Kemangsen", "Penambangan", "Seduri", "Seketi", "Singkalan", "SumoKembangsri", "Waruberon", "Watesari", "Wonokarang", "Jeruklegi", "Jabaran", "Suwaluh", "Gadungkepuhsari", "Bogempinggir", "Bakungtemenggungan", "Bakungpringgodani", "Wringinpitu", "Bakalan"],
+    "Wonoayu": ["Becirongengor", "Candinegoro", "Jimbaran Kulon", "Jimbaran wetan", "Pilang", "Karangturi", "Ketimang", "Lambangan", "Mohorangagung", "Mulyodadi", "Pagerngumbuk", "Plaosan", "Ploso", "Popoh", "Sawocangkring", "semambung", "Simoangin-angin", "Simoketawang", "Sumberejo", "Tanggul", "Wonoayu", "Wonokalang", "Wonokasian"],
+    "Tarik": ["Tarik", "Klantingsari", "GedangKlutuk", "Mergosari", "Kedinding", "Kemuning", "Janti", "Mergobener", "Mliriprowo", "Singogalih", "Kramat Temenggung", "Kedungbocok", "Segodobancang", "Gampingrowo", "Mindugading", "Kalimati", "Banjarwungu", "Balongmacekan", "Kendalsewu", "Sebani"],
+    "Prambon": ["Prambon", "Bendotretek", "Bulang", "Cangkringturi", "Gampang", "Gedangrowo", "Jati alun-alun", "Watutulis", "jatikalang", "jedongcangkring", "Kajartengguli", "Kedungkembanr", "Kedung Sugo", "Kedungwonokerto", "Penjangkkungan", "Simogirang", "Simpang", "Temu", "Wirobiting", "Wonoplintahan"],
+    "Taman": ["Taman", "Trosobo", "Sepanjang", "Ngelom", "Ketegan", "Jemundo", "Geluran", "Wage", "Bebekan", "Kalijaten", "Tawangsari", "Sidodadi", "Sambibulu", "Sadang", "Maduretno", "Krembangan", "Pertapan", "Kramatjegu", "Kletek", "Tanjungsari", "Kedungturi", "Gilang", "Bringinbendo", "Bohar", "Wonocolo"],
+    "Waru": ["Waru", "Tropodo", "Kureksari", "Jambangan", "Medaeng", "Berbek", "Bungurasih", "Janti", "Kedungrejo", "Kepuhkiriman", "Ngingas", "Pepelegi", "Tambakoso", "Tambakrejo", "Tambahsawah", "Tambaksumur", "Wadungasri", "Wedoro"],
+    "Gedangan": ["Gedangan", "Ketajen", "Wedi", "Bangah", "Sawotratap", "Semambung", "Ganting", "Tebel", "Kebonanom", "Gemurung", "Karangbong", "Kebiansikep", "Kragan", "Punggul", "Seruni"],
+    "Sedati": ["Sedati", "Pabean", "Semampir", "Banjarkemuningtambak", "Pulungan", "Betro", "Segoro Tambak", "Gisik Cemandi", "Cemandi", "Kalanganyar", "Buncitan", "Wangsan", "Pranti", "Pepe", "Sedatiagung", "Sedatigede", "Tambakcemandi"],
+    "Sukodono": ["Sukodono", "Jumputrejo", "Kebonagung", "Keloposepuluh", "Jogosatru", "Suruh", "Ngaresrejo", "Cangkringsari", "Masangan Wetan", "Masangan Kulon", "Bangsri", "Anggaswangi", "Pandemonegoro", "Panjunan", "Pekarungan", "Plumbungan", "Sambungrejo", "Suko", "Wilayut"]
+};
+
+document.getElementById('kecamatan').addEventListener('change', function () {
+    const kecamatan = this.value;
+    const kelDesaSelect = document.getElementById('kel_desa');
+    kelDesaSelect.innerHTML = '<option value="">-- Pilih Kelurahan/Desa --</option>';
+    
+    if (kecamatan && desaKelurahan[kecamatan]) {
+        desaKelurahan[kecamatan].forEach(function (desa) {
+            const option = document.createElement('option');
+            option.value = desa;
+            option.textContent = desa;
+            kelDesaSelect.appendChild(option);
+        });
+        kelDesaSelect.disabled = false;
+    } else {
+        kelDesaSelect.disabled = true;
+    }
+});
+
+// Format nomor telepon perusahaan
+document.getElementById('no_telp_perusahaan').addEventListener('input', function() {
+    this.value = this.value.replace(/\D/g, '');
+});
+
+document.getElementById('no_telp_perusahaan').addEventListener('blur', function() {
+    let value = this.value.trim();
+    
+    if (!value) return;
+    
+    value = value.replace(/\D/g, '');
+    
+    if (value.startsWith('0')) {
+        value = '62' + value.substring(1);
+    } else if (!value.startsWith('62') && value.length > 0) {
+        value = '62' + value;
     }
     
-    // 5. Submit
-    const btnSubmit = document.getElementById('btnSubmit');
-    btnSubmit.disabled = true;
-    btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin pe-2"></i> Mengirim Data...';
-    window.formChanged = false;
-    
-    console.log('=== SUBMITTING FORM ===');
-    e.target.submit();
-}
+    this.value = value;
+});
 
 // ===== INITIALIZE =====
 document.addEventListener('DOMContentLoaded', function () {
@@ -590,10 +806,7 @@ document.addEventListener('DOMContentLoaded', function () {
     );
     
     // Setup legalitas
-    const legalitasCheckboxes = document.querySelectorAll('.legalitas-checkbox');
-    legalitasCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', updateLegalitasUploads);
-    });
+    setupLegalitasDragDrop();
     
     // Setup form submit
     const form = document.getElementById('formPendaftaran');
@@ -618,43 +831,4 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     
     console.log('Form initialized successfully');
-});
-// ===== KELURAHAN/DESA DATA =====
-const desaKelurahan = {
-    "Sidoarjo": ["Sidoarjo", "Lemahputro", "Magersari", "Gebang", "Celep", "Bulusidokare", "Urangagung", "Banjarbendo", "Blurukidul", "Cemengbakalan", "Jati", "Kemiri", "Lebo", "Rangkalkidul", "Sarirogo", "Suko", "Sumput", "Cemengkalan", "Pekawuman", "Pucang", "Pucanganom", "Sekardangan", "Sidoklumpuk", "Sidokumpul"],
-    "Buduran": ["Buduran", "Sawohan", "Siwalanpanji", "Prasung", "Banjarkemantren", "Banjarsari", "Damarsi", "Dukuhtengah", "Entalsewu", "Pagerwojo", "Sidokerto", "Sidomulyo", "Sidokepung", "Sukorejo", "Wadungasin"],
-    "Candi": ["Candi", "Durungbanjar", "Larangan", "Sumokali", "Sepande", "Kebonsari", "Kedensari", "Bligo", "Balongdowo", "Balonggabus", "Durungbanjar", "Durungbedug", "Gelam", "Jambangan", "Kalipecabean", "Karangtanjung", "Kebonsari", "Kedungkendo", "Kedungpeluk", "Kendalpencabean", "Klurak", "Ngampelsari", "Sidodadi", "Sugihwaras", "Sumorame", "Tenggulunan", "Wedoroklurak"],
-    "Porong": ["Porong", "Kebonagung", "Kesambi", "Plumbon", "Pesawahan", "Gedang", "Juwetkenongo", "Kedungboto", "Wunut", "Pamotan", "Kebakalan", "Gempol Pasargi", "Glagaharum", "Lajuk", "Candipari"],
-    "Krembung": ["Krembung", "Balanggarut", "Cangkring", "Gading", "Jenggot", "Kandangan", "Kedungrawan", "Kedungsumur", "Keperkeret", "Lemujut", "Ploso", "Rejeni", "Tambakrejo", "Tanjekwagir", "Wangkal", "Wonomlati", "Waung", "Mojoruntut"],
-    "Tulangan": ["Tulangan", "Jiken", "Kajeksan", "Kebaran", "Kedondong", "Kepatihan", "Kepunten", "Medalem", "Pangkemiri", "Sudimoro", "Tlasih", "Gelang", "Kepadangan", "Grabagan", "Singopadu", "Kemantren", "Janti", "Modong", "Grogol", "Kenongo", "Grinting"],
-    "Tanggulangin": ["kalisampurno", "kedensari", "Ganggang Pnjang", "Randegan", "Kalitengah", "Kedung Banteng", "Putat", "Ketapang", "Kalidawir", "Ketegan", "Banjar Panji", "Gempolsari", "Sentul", "Penatarsewu", "Banjarsari", "Ngaban", "Boro", "Kludan"],
-    "Jabon": ["Trompoasri", "Kedung Pandan", "Permisan", "Semambung", "Pangrih", "Kupang", "Tambak Kalisogo", "Kedungrejo", "Kedungcangkring", "Keboguyang", "Jemirahan", "Balongtani", "dukuhsari"],
-    "Krian": ["Sidomojo", "Sidomulyo", "Sidorejo", "Tempel", "Terik", "Terungkulon", "Terungwetan", "Tropodo", "Watugolong", "Krian", "Kemasan", "Tambakkemeraan", "Sedenganmijen", "Bareng Krajan", "Keraton", "Keboharan", "Katerungan", "Jeruk Gamping", "Junwangi", "Jatikalang", "Gamping", "Ponokawan"],
-    "Balongbendo": ["Balongbendo", "", "WonoKupang", "Kedungsukodani", "Kemangsen", "Penambangan", "Seduri", "Seketi", "Singkalan", "SumoKembangsri", "Waruberon", "Watesari", "Wonokarang", "Jeruklegi", "Jabaran", "Suwaluh", "Gadungkepuhsari", "Bogempinggir", "Bakungtemenggungan", "Bakungpringgodani", "Wringinpitu", "Bakalan"],
-    "Wonoayu": ["Becirongengor", "Candinegoro", "Jimbaran Kulon", "Jimbaran wetan", "Pilang", "Karangturi", "Ketimang", "Lambangan", "Mohorangagung", "Mulyodadi", "Pagerngumbuk", "Plaosan", "Ploso", "Popoh", "Sawocangkring", "semambung", "Simoangin-angin", "Simoketawang", "Sumberejo", "Tanggul", "Wonoayu", "Wonokalang", "Wonokasian"],
-    "Tarik": ["Tarik", "Klantingsari", "GedangKlutuk", "Mergosari", "Kedinding", "Kemuning", "Janti", "Mergobener", "Mliriprowo", "Singogalih", "Kramat Temenggung", "Kedungbocok", "Segodobancang", "Gampingrowo", "Mindugading", "Kalimati", "Banjarwungu", "Balongmacekan", "Kendalsewu", "Sebani"],
-    "Prambon": ["Prambon", "Bendotretek", "Bulang", "Cangkringturi", "Gampang", "Gedangrowo", "Jati alun-alun", "Watutulis", "jatikalang", "jedongcangkring", "Kajartengguli", "Kedungkembanr", "Kedung Sugo", "Kedungwonokerto", "Penjangkkungan", "Simogirang", "Simpang", "Temu", "Wirobiting", "Wonoplintahan"],
-    "Taman": ["Taman", "Trosobo", "Sepanjang", "Ngelom", "Ketegan", "Jemundo", "Geluran", "Wage", "Bebekan", "Kalijaten", "Tawangsari", "Sidodadi", "Sambibulu", "Sadang", "Maduretno", "Krembangan", "Pertapan", "Kramatjegu", "Kletek", "Tanjungsari", "Kedungturi", "Gilang", "Bringinbendo", "Bohar", "Wonocolo"],
-    "Waru": ["Waru", "Tropodo", "Kureksari", "Jambangan", "Medaeng", "Berbek", "Bungurasih", "Janti", "Kedungrejo", "Kepuhkiriman", "Ngingas", "Pepelegi", "Tambakoso", "Tambakrejo", "Tambahsawah", "Tambaksumur", "Wadungasri", "Wedoro"],
-    "Gedangan": ["Gedangan", "Ketajen", "Wedi", "Bangah", "Sawotratap", "Semambung", "Ganting", "Tebel", "Kebonanom", "Gemurung", "Karangbong", "Kebiansikep", "Kragan", "Punggul", "Seruni"],
-    "Sedati": ["Sedati", "Pabean", "Semampir", "Banjarkemuningtambak", "Pulungan", "Betro", "Segoro Tambak", "Gisik Cemandi", "Cemandi", "Kalanganyar", "Buncitan", "Wangsan", "Pranti", "Pepe", "Sedatiagung", "Sedatigede", "Tambakcemandi"],
-    "Sukodono": ["Sukodono", "Jumputrejo", "Kebonagung", "Keloposepuluh", "Jogosatru", "Suruh", "Ngaresrejo", "Cangkringsari", "Masangan Wetan", "Masangan Kulon", "Bangsri", "Anggaswangi", "Pandemonegoro", "Panjunan", "Pekarungan", "Plumbungan", "Sambungrejo", "Suko", "Wilayut"]
-};
-
-document.getElementById('kecamatan').addEventListener('change', function () {
-    const kecamatan = this.value;
-    const kelDesaSelect = document.getElementById('kel_desa');
-    kelDesaSelect.innerHTML = '<option value="">-- Pilih Kelurahan/Desa --</option>';
-    
-    if (kecamatan && desaKelurahan[kecamatan]) {
-        desaKelurahan[kecamatan].forEach(function (desa) {
-            const option = document.createElement('option');
-            option.value = desa;
-            option.textContent = desa;
-            kelDesaSelect.appendChild(option);
-        });
-        kelDesaSelect.disabled = false;
-    } else {
-        kelDesaSelect.disabled = true;
-    }
 });

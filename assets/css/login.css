@@ -10,6 +10,11 @@ section {
   scroll-margin-top: 50px;
 }
 
+body.modal-open {
+  overflow: auto !important;
+  padding-right: 0 !important;
+}
+
 .login-container {
     min-height: 100vh;
     background-image: url('../img/bg.png');

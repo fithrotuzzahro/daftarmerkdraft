@@ -38,14 +38,19 @@ try {
         ");
         $stmt->execute([$identifier]);
     } else {
-        // Normalize nomor telepon
+        // Normalize nomor telepon ke format 62xxx
         $phone = preg_replace('/\D/', '', $identifier);
+        
+        // Konversi semua ke format 62xxx
         if (substr($phone, 0, 1) == '0') {
-            $phone_08 = $phone;
+            // Dari 08xxx ke 62xxx
+            $phone_normalized = '62' . substr($phone, 1);
         } elseif (substr($phone, 0, 2) == '62') {
-            $phone_08 = '0' . substr($phone, 2);
+            // Sudah format 62xxx
+            $phone_normalized = $phone;
         } else {
-            $phone_08 = '0' . $phone;
+            // Tambahkan 62 di depan
+            $phone_normalized = '62' . $phone;
         }
         
         $stmt = $pdo->prepare("
@@ -53,7 +58,7 @@ try {
             FROM user 
             WHERE no_wa = ?
         ");
-        $stmt->execute([$phone_08]);
+        $stmt->execute([$phone_normalized]);
     }
 
     $user = $stmt->fetch();
@@ -119,3 +124,4 @@ try {
         'message' => $e->getMessage()
     ]);
 }
+?>

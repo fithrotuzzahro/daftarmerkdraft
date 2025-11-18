@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once 'config_db.php';
+require_once 'notification_helper.php'; // TAMBAHKAN INI
 
 // Cek apakah user adalah admin
 if (!isset($_SESSION['NIK_NIP']) || $_SESSION['role'] != 'Admin') {
@@ -53,7 +54,7 @@ try {
     $pdo->beginTransaction();
     
     // Ambil data pendaftar untuk notifikasi
-    $sql_user = "SELECT p.NIK, u.email, u.nama_lengkap 
+    $sql_user = "SELECT p.NIK, u.email, u.nama_lengkap, u.no_wa 
                  FROM pendaftaran p 
                  INNER JOIN user u ON p.NIK = u.NIK_NIP 
                  WHERE p.id_pendaftaran = :id";
@@ -65,6 +66,9 @@ try {
     if (!$user_data) {
         throw new Exception('Data pendaftaran tidak ditemukan');
     }
+    
+    // Variable untuk tracking notifikasi
+    $notif_result = null;
     
     // ===== HANDLE BERDASARKAN STATUS =====
     
@@ -87,16 +91,21 @@ try {
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
         
-        // Simpan notifikasi
-        $deskripsi = "Pendaftaran merek Anda tidak bisa difasilitasi. Alasan: " . $alasan;
-        $sql_notif = "INSERT INTO notifikasi (NIK_NIP, id_pendaftaran, email, deskripsi, tgl_notif) 
-                      VALUES (:nik, :id_pendaftaran, :email, :deskripsi, NOW())";
-        $stmt_notif = $pdo->prepare($sql_notif);
-        $stmt_notif->bindParam(':nik', $user_data['NIK'], PDO::PARAM_STR);
-        $stmt_notif->bindParam(':id_pendaftaran', $id_pendaftaran, PDO::PARAM_INT);
-        $stmt_notif->bindParam(':email', $user_data['email'], PDO::PARAM_STR);
-        $stmt_notif->bindParam(':deskripsi', $deskripsi, PDO::PARAM_STR);
-        $stmt_notif->execute();
+        // Commit dulu sebelum kirim notifikasi
+        $pdo->commit();
+        
+        // KIRIM NOTIFIKASI (DB + WhatsApp)
+        $deskripsi = NotificationTemplates::tidakBisaDifasilitasi($alasan);
+        $notif_result = sendNotification(
+            $user_data['NIK'],
+            $id_pendaftaran,
+            $user_data['email'],
+            $deskripsi,
+            $user_data['no_wa']
+        );
+        
+        error_log("Notifikasi Tidak Bisa Difasilitasi - DB: " . ($notif_result['db'] ? 'SUCCESS' : 'FAILED'));
+        error_log("Notifikasi Tidak Bisa Difasilitasi - WA: " . json_encode($notif_result['wa']));
     }
     
     // 2. KONFIRMASI LANJUT (Merek 2 atau 3)
@@ -123,16 +132,21 @@ try {
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
         
-        // Simpan notifikasi
-        $deskripsi = "Merek alternatif " . $merek_dipilih . " Anda telah dipilih untuk difasilitasi. Alasan: " . $alasan . ". Mohon konfirmasi jika Anda ingin melanjutkan proses dengan merek ini.";
-        $sql_notif = "INSERT INTO notifikasi (NIK_NIP, id_pendaftaran, email, deskripsi, tgl_notif) 
-                      VALUES (:nik, :id_pendaftaran, :email, :deskripsi, NOW())";
-        $stmt_notif = $pdo->prepare($sql_notif);
-        $stmt_notif->bindParam(':nik', $user_data['NIK'], PDO::PARAM_STR);
-        $stmt_notif->bindParam(':id_pendaftaran', $id_pendaftaran, PDO::PARAM_INT);
-        $stmt_notif->bindParam(':email', $user_data['email'], PDO::PARAM_STR);
-        $stmt_notif->bindParam(':deskripsi', $deskripsi, PDO::PARAM_STR);
-        $stmt_notif->execute();
+        // Commit dulu sebelum kirim notifikasi
+        $pdo->commit();
+        
+        // KIRIM NOTIFIKASI (DB + WhatsApp)
+        $deskripsi = NotificationTemplates::konfirmasiMerekAlternatif($merek_dipilih, $alasan);
+        $notif_result = sendNotification(
+            $user_data['NIK'],
+            $id_pendaftaran,
+            $user_data['email'],
+            $deskripsi,
+            $user_data['no_wa']
+        );
+        
+        error_log("Notifikasi Konfirmasi Lanjut - DB: " . ($notif_result['db'] ? 'SUCCESS' : 'FAILED'));
+        error_log("Notifikasi Konfirmasi Lanjut - WA: " . json_encode($notif_result['wa']));
     }
     
     // 3. SURAT KETERANGAN DIFASILITASI (Merek 1)
@@ -154,16 +168,21 @@ try {
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
         
-        // Simpan notifikasi
-        $deskripsi = "Selamat! Merek alternatif 1 (Utama) Anda telah disetujui untuk difasilitasi. Silakan lengkapi Surat Keterangan Difasilitasi.";
-        $sql_notif = "INSERT INTO notifikasi (NIK_NIP, id_pendaftaran, email, deskripsi, tgl_notif) 
-                      VALUES (:nik, :id_pendaftaran, :email, :deskripsi, NOW())";
-        $stmt_notif = $pdo->prepare($sql_notif);
-        $stmt_notif->bindParam(':nik', $user_data['NIK'], PDO::PARAM_STR);
-        $stmt_notif->bindParam(':id_pendaftaran', $id_pendaftaran, PDO::PARAM_INT);
-        $stmt_notif->bindParam(':email', $user_data['email'], PDO::PARAM_STR);
-        $stmt_notif->bindParam(':deskripsi', $deskripsi, PDO::PARAM_STR);
-        $stmt_notif->execute();
+        // Commit dulu sebelum kirim notifikasi
+        $pdo->commit();
+        
+        // KIRIM NOTIFIKASI (DB + WhatsApp)
+        $deskripsi = NotificationTemplates::suratKeteranganDifasilitasi();
+        $notif_result = sendNotification(
+            $user_data['NIK'],
+            $id_pendaftaran,
+            $user_data['email'],
+            $deskripsi,
+            $user_data['no_wa']
+        );
+        
+        error_log("Notifikasi Surat Keterangan Difasilitasi - DB: " . ($notif_result['db'] ? 'SUCCESS' : 'FAILED'));
+        error_log("Notifikasi Surat Keterangan Difasilitasi - WA: " . json_encode($notif_result['wa']));
     }
     
     // 4. MELENGKAPI SURAT (setelah upload surat keterangan)
@@ -175,6 +194,8 @@ try {
         $stmt->bindParam(':status', $status_baru, PDO::PARAM_STR);
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
+        
+        $pdo->commit();
     }
     
     // 5. MENUNGGU BUKTI PENDAFTARAN
@@ -186,6 +207,8 @@ try {
         $stmt->bindParam(':status', $status_baru, PDO::PARAM_STR);
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
+        
+        $pdo->commit();
     }
     
     // 6. BUKTI PENDAFTARAN TERBIT
@@ -197,6 +220,8 @@ try {
         $stmt->bindParam(':status', $status_baru, PDO::PARAM_STR);
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
+        
+        $pdo->commit();
     }
     
     // 7. DIAJUKAN KE KEMENTERIAN
@@ -208,6 +233,8 @@ try {
         $stmt->bindParam(':status', $status_baru, PDO::PARAM_STR);
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
+        
+        $pdo->commit();
     }
     
     // 8. SERTIFIKAT TERBIT
@@ -219,6 +246,8 @@ try {
         $stmt->bindParam(':status', $status_baru, PDO::PARAM_STR);
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
+        
+        $pdo->commit();
     }
     
     // 9. HASIL VERIFIKASI KEMENTERIAN
@@ -230,6 +259,8 @@ try {
         $stmt->bindParam(':status', $status_baru, PDO::PARAM_STR);
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
+        
+        $pdo->commit();
     }
     
     // STATUS LAINNYA
@@ -241,15 +272,15 @@ try {
         $stmt->bindParam(':status', $status_baru, PDO::PARAM_STR);
         $stmt->bindParam(':id', $id_pendaftaran, PDO::PARAM_INT);
         $stmt->execute();
+        
+        $pdo->commit();
     }
-    
-    // Commit transaction
-    $pdo->commit();
     
     echo json_encode([
         'success' => true, 
         'message' => 'Status berhasil diupdate',
-        'new_status' => $status_baru
+        'new_status' => $status_baru,
+        'notif_sent' => $notif_result // Kirim info notifikasi ke frontend
     ]);
     
 } catch (Exception $e) {
