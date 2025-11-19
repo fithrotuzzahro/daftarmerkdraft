@@ -13,11 +13,13 @@ require_once 'process/config_db.php';
 
 $id_pendaftaran_aktif = null;
 
+$sudahDaftar = false;
+
 try {
     $stmt = $pdo->prepare("SELECT id_pendaftaran, status_validasi FROM pendaftaran WHERE NIK = ? ORDER BY tgl_daftar DESC LIMIT 1");
     $stmt->execute([$nik]);
     $pendaftaran_aktif = $stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if ($pendaftaran_aktif) {
         $sudahDaftar = true;
         $id_pendaftaran_aktif = $pendaftaran_aktif['id_pendaftaran'];
@@ -35,14 +37,14 @@ try {
                            FROM pendaftaran 
                            WHERE merek_difasilitasi IS NOT NULL 
                            AND YEAR(tgl_daftar) = :tahu n";
-    
+
     $stmt = $pdo->prepare($query_difasilitasi);
     $stmt->execute(['tahun' => $tahun_sekarang]);
     $data = $stmt->fetch();
     $jumlah_difasilitasi = $data['jumlah_difasilitasi'];
-    
+
     $kuota_tersedia = $total_kuota - $jumlah_difasilitasi;
-    
+
     // Pastikan kuota tersedia tidak negatif
     if ($kuota_tersedia < 0) {
         $kuota_tersedia = 0;
@@ -89,20 +91,28 @@ try {
                         DI LIHAT PENGAJUAN ANDA
                     </p>
                     <?php if ($sudahDaftar): ?>
-                        
-                    <!-- Notifikasi jika sudah pernah daftar -->
-                    <div class="alert-info-custom mb-3">
-                        <i class="bi bi-info-circle me-2"></i>
-                        <strong>Informasi:</strong> Anda sudah memiliki pendaftaran merek yang aktif. 
-                        Silakan cek status pengajuan Anda dengan klik tombol <strong>"LIHAT PENGAJUAN ANDA"</strong> di bawah ini.
-                    </div>
+
+                        <!-- Notifikasi jika sudah pernah daftar -->
+                        <div class="alert-info-custom mb-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>Informasi:</strong> Anda sudah memiliki pendaftaran merek yang aktif.
+                            Silakan cek status pengajuan Anda dengan klik tombol <strong>"LIHAT PENGAJUAN ANDA"</strong> di bawah ini.
+                        </div>
                     <?php endif; ?>
 
                     <div class="d-flex flex-column flex-sm-row justify-content-center align-items-center gap-2">
+                        <?php if ($sudahDaftar): ?>
+                            <!-- Button untuk pendaftaran kedua/ketiga jika sudah pernah daftar -->
+                            <a class="btn-form px-4 py-2" href="pendaftaran2.php">
+                                <strong>FORM PENDAFTARAN MEREK</strong>
+                            </a>
+                        <?php else: ?>
+                            <!-- Button untuk pendaftaran pertama -->
                             <a class="btn-form px-4 py-2" href="form-pendaftaran.php">
                                 <strong>FORM PENDAFTARAN MEREK</strong>
                             </a>
-                        
+                        <?php endif; ?>
+
                         <a class="btn-register px-4 py-2" href="status-seleksi-pendaftaran.php">
                             <strong>LIHAT PENGAJUAN ANDA</strong>
                         </a>
@@ -133,12 +143,13 @@ try {
                 <div class="col-md-6">
                     <h5 style="font-weight: 600; margin-bottom: 1rem;">Catatan</h5>
                     <ul class="ps-3">
-                        <li class="mb-2"> <span class="fw-medium">Cek Ketersediaan Merek: </span><br>Pastikan merek tersebut belum didaftarkan oleh orang lain <br> <a href="https://pdki-indonesia.dgip.go.id/"  target="_blank">Cek di PDKI Indonesia</a>
+                        <li class="mb-2"> <span class="fw-medium">Cek Ketersediaan Merek: </span><br>Pastikan merek tersebut belum didaftarkan oleh orang lain <br> <a href="https://pdki-indonesia.dgip.go.id/" target="_blank">Cek di PDKI Indonesia</a>
                         <li class="mb-2"><span class="fw-medium">Kelas Merek: </span><br>Tentukan Kelas Merek <br>
-                            <a href="https://skm.dgip.go.id/"  target="_blank">Sistem Klasifikasi Merek</a></li>
+                            <a href="https://skm.dgip.go.id/" target="_blank">Sistem Klasifikasi Merek</a>
+                        </li>
                         <li class="mb2"><span class="fw-medium">Pengumuman:</span> <br>Peserta terpilih akan diumumkan setiap 3 bulan melalui:
-                            <br><i class="bi bi-instagram" ></i>  disperindagsidoarjo
-                            <br class="mb-2"><i  class="bi bi-whatsapp"></i> 081235051286
+                            <br><i class="bi bi-instagram"></i> disperindagsidoarjo
+                            <br class="mb-2"><i class="bi bi-whatsapp"></i> 081235051286
                         </li>
                         <li class="mb-2"><span class="fw-medium">Kelengkapan Berkas: </span> <br>Peserta terpilih wajib datang langsung ke kantor Disperindag Sidoarjo (tidak boleh diwakilkan)
                         </li>
@@ -176,30 +187,30 @@ try {
 
     <!-- Kuota -->
     <section class="kuota-section" id="kuota">
-    <div class="container">
-        <h2 class="section-title">KUOTA PENDAFTARAN MEREK</h2>
-        <div class="row justify-content-center">
-            <div class="col-md-3">
-                <div class="kuota-card blue">
-                    <div class="kuota-nomor"><?php echo $total_kuota; ?></div>
-                    <div class="kuota-text">Jumlah kuota<br>per tahun</div>
+        <div class="container">
+            <h2 class="section-title">KUOTA PENDAFTARAN MEREK</h2>
+            <div class="row justify-content-center">
+                <div class="col-md-3">
+                    <div class="kuota-card blue">
+                        <div class="kuota-nomor"><?php echo $total_kuota; ?></div>
+                        <div class="kuota-text">Jumlah kuota<br>per tahun</div>
+                    </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="kuota-card green">
-                    <div class="kuota-nomor"><?php echo $kuota_tersedia; ?></div>
-                    <div class="kuota-text">Jumlah kuota<br>tersedia</div>
+                <div class="col-md-3">
+                    <div class="kuota-card green">
+                        <div class="kuota-nomor"><?php echo $kuota_tersedia; ?></div>
+                        <div class="kuota-text">Jumlah kuota<br>tersedia</div>
+                    </div>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="kuota-card red">
-                    <div class="kuota-nomor"><?php echo $jumlah_difasilitasi; ?></div>
-                    <div class="kuota-text">Merek sudah<br>difasilitasi</div>
+                <div class="col-md-3">
+                    <div class="kuota-card red">
+                        <div class="kuota-nomor"><?php echo $jumlah_difasilitasi; ?></div>
+                        <div class="kuota-text">Merek sudah<br>difasilitasi</div>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-</section>
+    </section>
 
     <section class="cta-section">
         <div class="container">

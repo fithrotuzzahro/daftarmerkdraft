@@ -410,6 +410,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <div class="sidebar-section border border-light-subtle bg-warning bg-opacity-10">
                     <h5><i class="bi bi-exclamation-triangle pe-2"></i>Perhatian</h5>
                     <ul class="info-list">
+                        <li><strong>Setiap akun hanya dapat melakukan 1 kali pendaftaran merek</strong></li>
                         <li>Pastikan semua data yang diisi sudah benar dan lengkap</li>
                         <li>Data yang sudah dikirim tidak dapat diubah</li>
                     </ul>
@@ -419,7 +420,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <h5>Bantuan</h5>
                     <p>Jika ada kendala dalam mengisi formulir bisa menghubungi kami dibawah ini.</p>
                     <a href="https://wa.me/6281235051286?text=Halo%2C%20saya%20ingin%20bertanya%20mengenai%20layanan%20industri" class="help-contact" target="_blank">
-                        <i class="fab fa-whatsapp pe-2"></i> Bidang Perindustrian Disperindag Sidoarjo
+                        <i class="fab fa-whatsapp pe-2"></i> -Bidang Perindustrian Disperindag Sidoarjo
                     </a>
                     <p class="text-danger mt-2">* Tidak menerima panggilan, hanya chat.</p>
                 </div>

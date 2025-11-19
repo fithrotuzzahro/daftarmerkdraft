@@ -827,6 +827,16 @@ try {
 
                           $tgl_kadaluarsa_formatted = $tgl_kadaluarsa->format('Y-m-d H:i:s');
 
+                          // Hitung tanggal batas perpanjangan (1 tahun sebelum kadaluarsa)
+                          $tgl_batas_perpanjangan = clone $tgl_kadaluarsa;
+                          $tgl_batas_perpanjangan->sub(new DateInterval('P1Y')); // Kurangi 1 tahun
+
+                          $tanggal_sekarang = new DateTime();
+
+                          // Cek apakah sudah waktunya perpanjangan (sisa waktu <= 1 tahun)
+                          $bisa_perpanjang = ($tanggal_sekarang >= $tgl_batas_perpanjangan && $tanggal_sekarang < $tgl_kadaluarsa);
+                          $sudah_kadaluarsa = ($tanggal_sekarang >= $tgl_kadaluarsa);
+
                           // Format tanggal dalam Bahasa Indonesia
                           $bulan_indonesia = [
                             1 => 'Januari',
@@ -849,12 +859,28 @@ try {
 
                           $tgl_kadaluarsa_indo = "$tanggal $bulan $tahun";
                         ?>
-                          <div class="alert alert-warning mt-3" role="alert" id="countdown-sertifikat-alert">
-                            <i class="fa-solid fa-hourglass-half me-2"></i>
-                            <strong>Masa Berlaku Sertifikat:</strong>
-                            <div class="mt-2" style="font-size: 1.1rem; font-weight: 600;">
-                              <span id="countdown-sertifikat-timer">Menghitung...</span>
-                            </div>
+                          <!-- COUNTDOWN TIMER -->
+                          <div class="alert <?php echo $sudah_kadaluarsa ? 'alert-danger' : ($bisa_perpanjang ? 'alert-warning' : 'alert-info'); ?> mt-3" role="alert" id="countdown-sertifikat-alert">
+                            <?php if ($sudah_kadaluarsa): ?>
+                              <i class="fa-solid fa-exclamation-circle me-2"></i>
+                              <strong>Sertifikat Sudah Kadaluarsa!</strong>
+                              <div class="mt-2" style="font-size: 1.1rem; font-weight: 600; color: #dc3545;">
+                                Masa berlaku sertifikat telah berakhir
+                              </div>
+                            <?php elseif ($bisa_perpanjang): ?>
+                              <i class="fa-solid fa-exclamation-triangle me-2"></i>
+                              <strong>Waktu Perpanjangan Telah Tiba!</strong>
+                              <div class="mt-2" style="font-size: 1.1rem; font-weight: 600;">
+                                <span id="countdown-sertifikat-timer">Menghitung...</span>
+                              </div>
+                            <?php else: ?>
+                              <i class="fa-solid fa-hourglass-half me-2"></i>
+                              <strong>Masa Berlaku Sertifikat:</strong>
+                              <div class="mt-2" style="font-size: 1.1rem; font-weight: 600;">
+                                <span id="countdown-sertifikat-timer">Menghitung...</span>
+                              </div>
+                            <?php endif; ?>
+
                             <small class="d-block mt-2 text-muted">
                               Sertifikat berlaku hingga: <?php echo $tgl_kadaluarsa_indo; ?> pukul 00:00 WIB
                             </small>
@@ -871,7 +897,7 @@ try {
 
                               if (distance < 0) {
                                 document.getElementById('countdown-sertifikat-timer').innerHTML = 'Masa berlaku sertifikat telah berakhir';
-                                document.getElementById('countdown-sertifikat-alert').classList.remove('alert-warning');
+                                document.getElementById('countdown-sertifikat-alert').classList.remove('alert-warning', 'alert-info');
                                 document.getElementById('countdown-sertifikat-alert').classList.add('alert-danger');
                                 clearInterval(countdownSertifikatInterval);
                                 return;
@@ -926,8 +952,8 @@ try {
                               const alertElement = document.getElementById('countdown-sertifikat-alert');
 
                               if (distance < oneYearInMs) {
-                                alertElement.classList.remove('alert-warning');
-                                alertElement.classList.add('alert-danger');
+                                alertElement.classList.remove('alert-info');
+                                alertElement.classList.add('alert-warning');
                               }
                             }
 
@@ -937,18 +963,53 @@ try {
                           </script>
                         <?php } ?>
 
+                        <!-- INFORMASI PENTING -->
                         <div class="alert alert-info mt-3 mb-0">
                           <i class="fa-solid fa-info-circle me-2"></i>
                           <strong>Informasi Penting:</strong>
                           <ul class="mb-0 mt-2" style="padding-left: 20px;">
                             <li><strong>Masa Berlaku:</strong> 10 tahun sejak tanggal penerbitan</li>
                             <li><strong>Perlindungan:</strong> Merek Anda dilindungi secara hukum di Indonesia</li>
+                            <?php if ($bisa_perpanjang || $sudah_kadaluarsa): ?>
+                              <li class="text-danger"><strong>Perpanjangan:</strong> Anda dapat mengajukan perpanjangan sertifikat</li>
+                            <?php endif; ?>
                           </ul>
                         </div>
+
+                        <!-- BUTTON PERPANJANGAN - MUNCUL JIKA SISA WAKTU <= 1 TAHUN -->
+                        <?php if ($bisa_perpanjang || $sudah_kadaluarsa): ?>
+                          <div class="mt-4 p-4 bg-warning bg-opacity-10 rounded border border-warning">
+                            <div class="text-center">
+                              <i class="fa-solid fa-rotate text-warning mb-3" style="font-size: 3rem;"></i>
+                              <h5 class="fw-bold mb-3">
+                                <?php echo $sudah_kadaluarsa ? 'Sertifikat Telah Kadaluarsa' : 'Saatnya Perpanjangan Sertifikat'; ?>
+                              </h5>
+                              <p class="mb-4 text-muted">
+                                <?php if ($sudah_kadaluarsa): ?>
+                                  Sertifikat merek Anda telah kadaluarsa. Segera ajukan perpanjangan untuk melindungi merek Anda.
+                                <?php else: ?>
+                                  Masa berlaku sertifikat Anda tinggal kurang dari 1 tahun. Ajukan perpanjangan sekarang untuk memastikan perlindungan merek Anda tetap aktif.
+                                <?php endif; ?>
+                              </p>
+                              <div class="d-grid gap-2 col-md-6 mx-auto">
+                                <a href="perpanjangan.php?id=<?php echo $pendaftaran['id_pendaftaran']; ?>" class="btn btn-warning btn-lg">
+                                  <i class="fa-solid fa-file-invoice me-2"></i>
+                                  Ajukan Perpanjangan Sertifikat
+                                </a>
+                              </div>
+                              <small class="d-block mt-3 text-muted">
+                                <i class="fa-solid fa-info-circle me-1"></i>
+                                Perpanjangan dapat dilakukan <?php echo $sudah_kadaluarsa ? 'meskipun sertifikat sudah kadaluarsa' : 'mulai sekarang'; ?>
+                              </small>
+                            </div>
+                          </div>
+                        <?php endif; ?>
                       </div>
                     </div>
+
                   <?php elseif ($suratPenolakan && file_exists($suratPenolakan)): ?>
                     <!-- JIKA ADA SURAT PENOLAKAN (DITOLAK) -->
+                    <!-- Bagian ini tetap sama seperti sebelumnya -->
                     <div class="card border-danger">
                       <div class="card-body">
                         <div class="text-center mb-3">
@@ -991,6 +1052,7 @@ try {
                   <?php endif; ?>
 
                 <?php else: ?>
+                  <!-- Status lainnya tetap sama -->
                   <p class="m-0"><?php echo htmlspecialchars($data['desc']); ?></p>
                 <?php endif; ?>
 

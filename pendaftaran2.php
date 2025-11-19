@@ -375,13 +375,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <div class="container main-container">
         <div class="row cont">
             <div class="col-lg-4">
-                <h5 class="judul">Seleksi Peserta Fasilitasi Pendaftaran Merek Diperindang Sidoarjo</h5>
-                <p>Fasilitasi gratis dari Disperindang Sidoarjo untuk membantu proses Pendaftaran Hak Merek Produk di Kemenkumham RI.</p>
+                <h5 class="judul">Fasilitasi Surat Keterangan IKM untuk Pendaftaran Merek Mandiri</h5>
+                <p>Pemohon hanya mendapatkan Surat Keterangan IKM (Industri Kecil Menengah) untuk melakukan Pendaftaran Merek Mandiri di Kemenkumham RI.</p>
 
                 <div class="sidebar-section border border-light-subtle">
                     <h5><i class="bi bi-info-square pe-2"></i> Informasi Pendaftaran</h5>
                     <ul class="list-unstyled info-list">
-                        <li>Tanggal Pendaftaran: <br> Sepanjang Tahun hingga kuota Habis</li>
                         <li>Output: <br> Sertifikat Merek</li>
                     </ul>
                 </div>
@@ -393,7 +392,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <li>Aktif memproduksi dan memasarkan produknya secara kontinyu</li>
                         <li>Produk kemasan dengan masa simpan lebih dari 7 hari</li>
                         <li>Nomor Induk Berusaha (NIB) berbasis risiko dengan KBLI industri sesuai jenis produk</li>
-                        <li>Logo Merek (3 Alternatif - beda gambar maupun tulisannya)</li>
+                        <li>Logo Merek</li>
                         <li>Foto produk jadi</li>
                         <li>Foto proses produksi yang membuktikan memang memproduksi sendiri</li>
                     </ul>
@@ -644,19 +643,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                         <div class="w-100 trademark-alternative">
                             <div>
-                                <label class="form-label">Contoh Alternatif Merek yang Sesuai</label>
+                                <label class="form-label">Contoh Merek yang Sesuai</label>
                                 <div class="trademark-examples">
                                     <div class="trademark-example">
                                         <img src="assets/img/aqua.png" alt="AQUA">
-                                        <h6 class="fw-normal">Nama Merek Alternatif 1<br><strong>AQUA</strong></h6>
-                                    </div>
-                                    <div class="trademark-example">
-                                        <img src="assets/img/leminerale.png" alt="LE MINERALE">
-                                        <h6 class="fw-normal">Nama Merek Alternatif 2<br><strong>LE MINERALE</strong></h6>
-                                    </div>
-                                    <div class="trademark-example">
-                                        <img src="assets/img/cleo.png" alt="CLEO">
-                                        <h6 class="fw-normal">Nama Merek Alternatif 3<br><strong>CLEO</strong></h6>
+                                        <h6 class="fw-normal">Nama Merek Alternatif<br><strong>AQUA</strong></h6>
                                     </div>
                                 </div>
                             </div>
@@ -673,13 +664,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         </div>
 
                         <div class="trademark-alternative ms-4">
-                            <h6>Merek Alternatif 1 (diutamakan) <span class="text-danger">*</span></h6>
+                            <h6>Merek <span class="text-danger">*</span></h6>
                             <div class="mb-2">
-                                <label class="form-label">Nama Merek Alternatif 1</label>
+                                <label class="form-label">Nama Merek </label>
                                 <input type="text" name="nama_merek1" class="form-control" placeholder="Masukkan nama merek alternatif 1" required>
                             </div>
                             <div class="mb-2">
-                                <label class="form-label">Logo Merek Alternatif 1</label>
+                                <label class="form-label">Logo Merek</label>
                                 <div class="file-drop-zone" id="logo1DropZone">
                                     <i class="fas fa-cloud-upload-alt"></i>
                                     <p><strong>Seret & Lepas file di sini</strong><br>atau klik untuk memilih file</p>
@@ -687,42 +678,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                     <input type="file" name="logo1" id="logo1-file" accept=".jpg,.jpeg,.png" hidden>
                                 </div>
                                 <div class="preview-container" id="logo1Preview"></div>
-                            </div>
-                        </div>
-
-                        <div class="trademark-alternative ms-4">
-                            <h6>Merek Alternatif 2 <span class="text-danger">*</span></h6>
-                            <div class="mb-2">
-                                <label class="form-label">Nama Merek Alternatif 2</label>
-                                <input type="text" name="nama_merek2" class="form-control" placeholder="Masukkan nama merek alternatif 2" required>
-                            </div>
-                            <div class="mb-2">
-                                <label class="form-label">Logo Merek Alternatif 2</label>
-                                <div class="file-drop-zone" id="logo2DropZone">
-                                    <i class="fas fa-cloud-upload-alt"></i>
-                                    <p><strong>Seret & Lepas file di sini</strong><br>atau klik untuk memilih file</p>
-                                    <small>Upload 1 file (JPG/PNG). Maks 1 MB</small>
-                                    <input type="file" name="logo2" id="logo2-file" accept=".jpg,.jpeg,.png" hidden>
-                                </div>
-                                <div class="preview-container" id="logo2Preview"></div>
-                            </div>
-                        </div>
-
-                        <div class="trademark-alternative ms-4">
-                            <h6>Merek Alternatif 3 <span class="text-danger">*</span></h6>
-                            <div class="mb-2">
-                                <label class="form-label">Nama Merek Alternatif 3</label>
-                                <input type="text" name="nama_merek3" class="form-control" placeholder="Masukkan nama merek alternatif 3" required>
-                            </div>
-                            <div class="mb-2">
-                                <label class="form-label">Logo Merek Alternatif 3</label>
-                                <div class="file-drop-zone" id="logo3DropZone">
-                                    <i class="fas fa-cloud-upload-alt"></i>
-                                    <p><strong>Seret & Lepas file di sini</strong><br>atau klik untuk memilih file</p>
-                                    <small>Upload 1 file (JPG/PNG). Maks 1 MB</small>
-                                    <input type="file" name="logo3" id="logo3-file" accept=".jpg,.jpeg,.png" hidden>
-                                </div>
-                                <div class="preview-container" id="logo3Preview"></div>
                             </div>
                         </div>
 
