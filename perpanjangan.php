@@ -41,7 +41,7 @@ try {
         exit();
     }
 
-    // Ambil sertifikat lama dari database
+    // Ambil sertifikat lama dari database (id_jenis_file = 15)
     $stmt = $pdo->prepare("
         SELECT file_path, tgl_upload 
         FROM lampiran 
@@ -181,6 +181,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // Commit transaction
         $pdo->commit();
+
+        // Generate PDF Surat Perpanjangan
+        $_SESSION['generate_pdf_id'] = $id_pendaftaran_baru;
 
         $_SESSION['alert_message'] = "Permohonan perpanjangan sertifikat berhasil diajukan!\n\nSilakan cek status pengajuan Anda secara berkala.\n\nTerima kasih.";
         $_SESSION['alert_type'] = 'success';

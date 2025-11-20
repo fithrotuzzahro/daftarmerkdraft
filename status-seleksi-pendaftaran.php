@@ -251,6 +251,23 @@ try {
   $stmt->execute([$pendaftaran['id_pendaftaran']]);
   $result = $stmt->fetch(PDO::FETCH_ASSOC);
   $suratPenolakan = $result ? $result['file_path'] : null;
+
+  // Cek apakah ini pendaftaran perpanjangan (ada surat perpanjangan)
+  $stmt = $pdo->prepare("SELECT file_path, tgl_upload FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 17 ORDER BY tgl_upload DESC LIMIT 1");
+  $stmt->execute([$pendaftaran['id_pendaftaran']]);
+  $surat_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
+
+  // Cek apakah ada sertifikat lama (id_jenis_file = 15)
+  $stmt = $pdo->prepare("SELECT file_path, tgl_upload FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 7 ORDER BY tgl_upload DESC LIMIT 1");
+  $stmt->execute([$pendaftaran['id_pendaftaran']]);
+  $sertifikat_lama_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
+
+  $is_perpanjangan = ($surat_perpanjangan || $sertifikat_lama_perpanjangan) ? true : false;
+
+  // Cek Surat Keterangan 
+  $stmt = $pdo->prepare("SELECT file_path, tgl_upload FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 18 ORDER BY tgl_upload DESC LIMIT 1");
+  $stmt->execute([$pendaftaran['id_pendaftaran']]);
+  $surat_ikm_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
   error_log("Error fetching lampiran: " . $e->getMessage());
 }
@@ -386,6 +403,119 @@ try {
   <?php include 'navbar-login.php' ?>
   <main class="main-content">
     <div class="container">
+      <?php if ($is_perpanjangan): ?>
+        <div class="alert alert-info mb-4">
+          <i class="fa-solid fa-rotate me-2"></i>
+          <strong>Permohonan Perpanjangan Sertifikat Merek</strong>
+        </div>
+
+        <div class="info-card mb-4">
+          <div class="info-header">
+            <h2 class="info-title">
+              <i class="fa-solid fa-file-invoice me-2"></i>
+              Surat Keterangan untuk Perpanjangan Merek
+            </h2>
+          </div>
+
+          <hr class="border-2 border-secondary w-100 line" />
+
+          <div class="row g-3">
+            <!-- Surat Permohonan Perpanjangan -->
+            <?php if ($surat_perpanjangan && file_exists($surat_perpanjangan['file_path'])): ?>
+              <div class="col-md-6">
+                <div class="card border-primary h-100">
+                  <div class="card-body">
+                    <div class="text-center mb-3">
+                      <i class="fa-solid fa-file-alt text-primary" style="font-size: 3rem;"></i>
+                    </div>
+                    <h6 class="fw-bold text-center mb-3">Surat Permohonan Perpanjangan</h6>
+                    <div class="alert alert-success mb-3">
+                      <small>
+                        <i class="fa-solid fa-check-circle me-1"></i>
+                        <strong>File Tersedia</strong>
+                      </small>
+                      <p class="mb-0 mt-1" style="font-size: 0.85rem;">
+                        <i class="fa-solid fa-calendar me-1"></i>
+                        Dibuat: <?php echo date('d/m/Y H:i', strtotime($surat_perpanjangan['tgl_upload'])); ?> WIB
+                      </p>
+                    </div>
+                    <div class="d-grid gap-2">
+                      <button class="btn btn-sm btn-outline-primary btn-view"
+                        data-src="<?php echo htmlspecialchars($surat_perpanjangan['file_path']); ?>"
+                        data-title="Surat Permohonan Perpanjangan">
+                        <i class="fas fa-eye me-1"></i> Preview
+                      </button>
+                      <a class="btn btn-primary btn-sm" href="<?php echo htmlspecialchars($surat_perpanjangan['file_path']); ?>" download>
+                        <i class="fa-solid fa-download me-1"></i> Download
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            <?php endif; ?>
+
+            <!-- Sertifikat Lama -->
+            <?php if ($sertifikat_lama_perpanjangan && file_exists($sertifikat_lama_perpanjangan['file_path'])): ?>
+              <div class="col-md-6">
+                <div class="card border-success h-100">
+                  <div class="card-body">
+                    <div class="text-center mb-3">
+                      <i class="fa-solid fa-certificate text-success" style="font-size: 3rem;"></i>
+                    </div>
+                    <h6 class="fw-bold text-center mb-3">Sertifikat Merek Lama</h6>
+                    <div class="alert alert-success mb-3">
+                      <small>
+                        <i class="fa-solid fa-check-circle me-1"></i>
+                        <strong>File Tersedia</strong>
+                      </small>
+                      <p class="mb-0 mt-1" style="font-size: 0.85rem;">
+                        <i class="fa-solid fa-calendar me-1"></i>
+                        Diupload: <?php echo date('d/m/Y H:i', strtotime($sertifikat_lama_perpanjangan['tgl_upload'])); ?> WIB
+                      </p>
+                    </div>
+                    <div class="d-grid gap-2">
+                      <button class="btn btn-sm btn-outline-success btn-view"
+                        data-src="<?php echo htmlspecialchars($sertifikat_lama_perpanjangan['file_path']); ?>"
+                        data-title="Sertifikat Merek Lama">
+                        <i class="fas fa-eye me-1"></i> Preview
+                      </button>
+                      <a class="btn btn-success btn-sm" href="<?php echo htmlspecialchars($sertifikat_lama_perpanjangan['file_path']); ?>" download>
+                        <i class="fa-solid fa-download me-1"></i> Download
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            <?php endif; ?>
+          </div>
+
+          <!-- Status Surat Keterangan IKM -->
+          <div class="mt-4">
+            <?php if ($surat_ikm_perpanjangan && file_exists($surat_ikm_perpanjangan['file_path'])): ?>
+              <div class="alert alert-success">
+                <i class="fa-solid fa-check-circle me-2"></i>
+                <strong>Surat Keterangan IKM Perpanjangan Sudah Tersedia!</strong>
+                <p class="mb-0 mt-2">Surat Keterangan IKM untuk perpanjangan merek Anda telah diterbitkan oleh admin.</p>
+                <div class="mt-3">
+                  <a href="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>" class="btn btn-success btn-sm" download>
+                    <i class="fa-solid fa-download me-1"></i> Download Surat Keterangan IKM
+                  </a>
+                </div>
+              </div>
+            <?php else: ?>
+              <div class="alert alert-warning">
+                <i class="fa-solid fa-hourglass-half me-2"></i>
+                <strong>Mohon Menunggu</strong>
+                <p class="mb-0 mt-2">Surat Keterangan IKM untuk perpanjangan merek sedang dalam proses. Admin akan mengirimkan dokumen ini setelah verifikasi selesai.</p>
+                <p class="mb-0 mt-2 small text-muted">
+                  <i class="fa-solid fa-info-circle me-1"></i>
+                  Anda akan mendapat notifikasi setelah Surat Keterangan IKM tersedia
+                </p>
+              </div>
+            <?php endif; ?>
+          </div>
+        </div>
+      <?php endif; ?>
       <h1 class="page-title">Status Seleksi Pendaftaran Merek</h1>
       <p class="page-description">
         Cek secara berkala untuk mengetahui perkembangan lebih<br />
@@ -1810,6 +1940,18 @@ try {
         console.log('Preview icon elements NOT found');
       }
     });
+    // Auto generate PDF setelah redirect dari perpanjangan.php
+    <?php if (isset($_SESSION['generate_pdf_id'])): ?>
+      const pdfId = <?php echo $_SESSION['generate_pdf_id']; ?>;
+
+      // Hapus session flag
+      <?php unset($_SESSION['generate_pdf_id']); ?>
+
+      // Generate PDF di background
+      setTimeout(function() {
+        window.open('generate-surat-perpanjangan.php?id=' + pdfId, '_blank');
+      }, 1000);
+    <?php endif; ?>
   </script>
 
 </body>
