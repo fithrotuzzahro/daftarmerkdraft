@@ -13,7 +13,7 @@ if (!isset($_SESSION['NIK_NIP'])) {
 $NIK = $_SESSION['NIK_NIP'];
 
 try {
-    $stmt_master = $pdo->prepare("SELECT id_jenis_file, nama_jenis_file FROM masterfilelampiran WHERE id_jenis_file >= 9 ORDER BY id_jenis_file");
+    $stmt_master = $pdo->prepare("SELECT id_jenis_file, nama_jenis_file FROM masterfilelampiran WHERE id_jenis_file >= 9 AND id_jenis_file != 16 ORDER BY id_jenis_file");
     $stmt_master->execute();
     $master_legalitas = $stmt_master->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
@@ -381,7 +381,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <div class="sidebar-section border border-light-subtle">
                     <h5><i class="bi bi-info-square pe-2"></i> Informasi Pendaftaran</h5>
                     <ul class="list-unstyled info-list">
-                        <li>Output: <br> Sertifikat Merek</li>
+                        <li>Output: <br> Surat Keterangan IKM</li>
                     </ul>
                 </div>
 

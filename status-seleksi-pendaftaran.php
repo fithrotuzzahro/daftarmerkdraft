@@ -992,7 +992,7 @@ try {
                                 <?php endif; ?>
                               </p>
                               <div class="d-grid gap-2 col-md-6 mx-auto">
-                                <a href="perpanjangan.php?id=<?php echo $pendaftaran['id_pendaftaran']; ?>" class="btn btn-warning btn-lg">
+                                <a href="perpanjangan.php" class="btn btn-warning btn-lg">
                                   <i class="fa-solid fa-file-invoice me-2"></i>
                                   Ajukan Perpanjangan Sertifikat
                                 </a>
@@ -1431,20 +1431,20 @@ try {
       const icon = type === 'danger' ? '❌' : type === 'success' ? '✅' : '⚠️';
 
       const alertModal = `
-    <div class="modal fade" id="alertModal" tabindex="-1">
-      <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content">
-          <div class="modal-body text-center p-4">
-            <div class="fs-1 mb-3">${icon}</div>
-            <p class="mb-0">${message}</p>
-          </div>
-          <div class="modal-footer border-0 justify-content-center">
-            <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+      <div class="modal fade" id="alertModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+          <div class="modal-content">
+            <div class="modal-body text-center p-4">
+              <div class="fs-1 mb-3">${icon}</div>
+              <p class="mb-0">${message}</p>
+            </div>
+            <div class="modal-footer border-0 justify-content-center">
+              <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
 
       const existingModal = document.getElementById('alertModal');
       if (existingModal) existingModal.remove();
@@ -1811,6 +1811,7 @@ try {
       }
     });
   </script>
+
 </body>
 
 </html>
