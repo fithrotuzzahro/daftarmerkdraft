@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['signature_data'])) {
             throw new Exception('Gagal mendapatkan ID perpanjangan dari database');
         }
 
-        // ===== SIMPAN TANDA TANGAN DIGITAL =====
+        // Simpan tanda tangan digital
         $signature_data = str_replace('data:image/png;base64,', '', $signature_data);
         $signature_data = str_replace(' ', '+', $signature_data);
         $signature_decoded = base64_decode($signature_data, true);
@@ -106,62 +106,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['signature_data'])) {
         }
 
         // Simpan file tanda tangan
-        $folder_ttd = "uploads/ttd_perpanjangan/ttd_{$NIK}/";
-        if (!file_exists($folder_ttd)) {
-            $mkdir_result = mkdir($folder_ttd, 0777, true);
+        $folder = "uploads/ttd_perpanjangan/ttd_{$NIK}/";
+        if (!file_exists($folder)) {
+            $mkdir_result = mkdir($folder, 0777, true);
             if (!$mkdir_result) {
-                throw new Exception('Gagal membuat folder: ' . $folder_ttd);
+                throw new Exception('Gagal membuat folder: ' . $folder);
             }
-            error_log("Folder created: " . $folder_ttd);
+            error_log("Folder created: " . $folder);
         }
 
-        $filename_ttd = "ttd_{$NIK}_" . time() . ".png";
-        $filepath_ttd = $folder_ttd . $filename_ttd;
+        $filename = "ttd_{$NIK}_" . time() . ".png";
+        $filepath = $folder . $filename;
         
-        $bytes_written = file_put_contents($filepath_ttd, $signature_decoded);
+        $bytes_written = file_put_contents($filepath, $signature_decoded);
         if ($bytes_written === false || $bytes_written === 0) {
-            throw new Exception('Gagal menyimpan file tanda tangan di: ' . $filepath_ttd);
+            throw new Exception('Gagal menyimpan file tanda tangan di: ' . $filepath);
         }
-        error_log("File tanda tangan tersimpan: " . $filepath_ttd . " (" . $bytes_written . " bytes)");
+        error_log("File tersimpan: " . $filepath . " (" . $bytes_written . " bytes)");
 
-        if (!file_exists($filepath_ttd)) {
-            throw new Exception('File tanda tangan tidak ditemukan setelah disimpan: ' . $filepath_ttd);
+        // Verify file was written
+        if (!file_exists($filepath)) {
+            throw new Exception('File tanda tangan tidak ditemukan setelah disimpan: ' . $filepath);
         }
 
-        // ===== SIMPAN TANDA TANGAN KE LAMPIRAN (id_jenis_file = 16) =====
-        $tgl_upload_ttd = date('Y-m-d H:i:s');
+        // Simpan ke tabel perpanjangan
         $stmt = $pdo->prepare("
-            INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path) 
-            VALUES (?, 16, ?, ?)
+            UPDATE perpanjangan 
+            SET file_ttd = ? 
+            WHERE id_perpanjangan = ?
         ");
-        $result_ttd = $stmt->execute([
-            -$id_perpanjangan,  // ID negatif untuk perpanjangan
-            $tgl_upload_ttd,
-            $filepath_ttd
+        
+        $result_lampiran = $stmt->execute([
+            $filepath,
+            $id_perpanjangan
         ]);
 
-        if (!$result_ttd) {
-            throw new Exception('Gagal menyimpan tanda tangan ke lampiran');
+        if (!$result_lampiran) {
+            $errorInfo = $stmt->errorInfo();
+            error_log("Update file_ttd error: " . json_encode($errorInfo));
+            throw new Exception('Gagal menyimpan file tanda tangan ke database: ' . $errorInfo[2]);
         }
-        error_log("Tanda tangan berhasil disimpan ke lampiran dengan id_jenis_file = 16");
+        error_log("File tanda tangan berhasil disimpan ke perpanjangan");
 
-        // ===== GENERATE SURAT PERPANJANGAN =====
         try {
             error_log("Starting PDF generation...");
             require_once __DIR__ . '/vendor/autoload.php';
             define('GENERATE_FROM_PERPANJANGAN', true);
-            
-            // Set variabel untuk generate-surat-perpanjangan.php
-            $id_perpanjangan_global = $id_perpanjangan;
-            $pdo_global = $pdo;
-            $NIK_global = $NIK;
-            
             require_once('generate-surat-perpanjangan.php');
             error_log("PDF generation completed successfully");
+
+            // ✅ SETELAH PDF DIBUAT, SIMPAN KE LAMPIRAN DENGAN id_jenis_file = 17
+            if (isset($filepath) && file_exists($filepath)) {
+                error_log("Saving surat perpanjangan to lampiran table...");
+                
+                $tgl_upload = date('Y-m-d H:i:s');
+                $surat_filepath = "uploads/surat_perpanjangan/surat_{$NIK}/surat_perpanjangan_{$NIK}_" . time() . ".pdf";
+                
+                // Insert ke lampiran dengan id_perpanjangan NEGATIF sebagai referensi
+                $stmt = $pdo->prepare("
+                    INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path) 
+                    VALUES (?, 17, ?, ?)
+                ");
+                
+                $result = $stmt->execute([
+                    -$id_perpanjangan,  // ID negatif untuk perpanjangan
+                    $tgl_upload,
+                    $surat_filepath
+                ]);
+
+                if ($result) {
+                    error_log("Surat perpanjangan berhasil disimpan ke lampiran: " . $surat_filepath);
+                } else {
+                    error_log("Warning: Gagal menyimpan ke lampiran, tapi PDF sudah dibuat");
+                }
+            }
         } catch (Exception $e) {
             error_log("Warning: PDF generation failed: " . $e->getMessage());
             error_log("Stack: " . $e->getTraceAsString());
-            // Lanjutkan meski PDF gagal, data tanda tangan sudah tersimpan
         }
 
         // COMMIT TRANSAKSI
