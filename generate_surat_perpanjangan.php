@@ -1,7 +1,9 @@
 <?php
+error_log("=== GENERATOR SCRIPT STARTED ===");
 
 // Cek apakah dipanggil langsung atau dari include
 $is_direct_call = !defined('GENERATE_FROM_PERPANJANGAN');
+error_log("Is direct call: " . ($is_direct_call ? 'YES' : 'NO'));
 
 if ($is_direct_call) {
     session_start();
@@ -22,13 +24,24 @@ if ($is_direct_call) {
     }
 } else {
     // Dipanggil dari perpanjangan.php (included)
-    // Variabel sudah di-set di perpanjangan.php: $id_perpanjangan_global, $pdo_global, $NIK_global
-    $id_perpanjangan = $id_perpanjangan_global ?? 0;
-    $pdo = $pdo_global ?? $pdo;
-    $NIK = $NIK_global ?? $NIK;
+    $id_perpanjangan = $GLOBALS['id_perpanjangan_global'] ?? 0;
+    $pdo = $GLOBALS['pdo_global'] ?? $pdo;
+    $NIK = $GLOBALS['NIK_global'] ?? $NIK;
+
+    error_log("ID Perpanjangan: " . $id_perpanjangan);
+    error_log("NIK: " . $NIK);
+}
+
+if (!$id_perpanjangan || !$NIK) {
+    throw new Exception("Missing required variables: id_perpanjangan or NIK");
 }
 
 try {
+    // Suppress any accidental output
+    ob_start();
+    
+    error_log("Fetching perpanjangan data...");
+
     // Ambil data perpanjangan
     $stmt = $pdo->prepare("
         SELECT perp.*, 
@@ -53,25 +66,23 @@ try {
         throw new Exception("Data tidak ditemukan atau Anda tidak memiliki akses");
     }
 
-    // Ambil tanda tangan (id_jenis_file = 16, id_pendaftaran negatif)
-    $stmt = $pdo->prepare("
-        SELECT file_path 
-        FROM lampiran 
-        WHERE id_pendaftaran = :id_perpanjangan 
-        AND id_jenis_file = 16
-        ORDER BY tgl_upload DESC 
-        LIMIT 1
-    ");
-    $stmt->execute(['id_perpanjangan' => -$id_perpanjangan]);
-    $ttd = $stmt->fetch(PDO::FETCH_ASSOC);
+    error_log("✅ Data perpanjangan ditemukan");
+
+    // Ambil tanda tangan dari tabel perpanjangan
+    $ttd_path = null;
+    if (isset($data['file_ttd']) && !empty($data['file_ttd'])) {
+        $ttd_path = $data['file_ttd'];
+        error_log("TTD Path: " . $ttd_path);
+        error_log("TTD Exists: " . (file_exists($ttd_path) ? 'YES' : 'NO'));
+    }
 
     // Buat alamat lengkap usaha
-    $alamat_usaha = $data['kel_desa'] . ', RT/RW ' . $data['usaha_rt_rw'] . ', ' . 
-                    $data['kecamatan'] . ', Kabupaten Sidoarjo';
+    $alamat_usaha = $data['kel_desa'] . ', RT/RW ' . $data['usaha_rt_rw'] . ', ' .
+        $data['kecamatan'] . ', Kabupaten Sidoarjo';
 
     // Buat alamat lengkap pemilik
-    $alamat_pemilik = $data['user_kel_desa'] . ', RT/RW ' . $data['user_rt_rw'] . ', ' . 
-                      $data['user_kecamatan'] . ', ' . $data['nama_kabupaten'] . ', ' . $data['nama_provinsi'];
+    $alamat_pemilik = $data['user_kel_desa'] . ', RT/RW ' . $data['user_rt_rw'] . ', ' .
+        $data['user_kecamatan'] . ', ' . $data['nama_kabupaten'] . ', ' . $data['nama_provinsi'];
 
     // Tentukan merek yang difasilitasi
     if ($data['merek_difasilitasi'] == 1) {
@@ -90,11 +101,13 @@ try {
         5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
         9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
     ];
-    
+
     $tanggal = date('d');
     $bulan = $bulan_indonesia[(int)date('m')];
     $tahun = date('Y');
     $tanggal_surat = "Sidoarjo, $tanggal $bulan $tahun";
+
+    error_log("Creating PDF...");
 
     // ===== BUAT PDF =====
     $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
@@ -148,55 +161,52 @@ try {
     $pdf->Ln(2);
 
     // Data dalam tabel
-    $col1_width = 50;
-    $col2_width = 5;
-    $col3_width = 115;
-
+    $col1 = 50; $col2 = 5; $col3 = 115;
     $pdf->SetFont('times', '', 11);
 
-    $pdf->Cell($col1_width, 6, '1. Nama Usaha', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->Cell($col3_width, 6, $data['nama_usaha'], 0, 1);
+    $pdf->Cell($col1, 6, '1. Nama Usaha', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->Cell($col3, 6, $data['nama_usaha'], 0, 1);
 
-    $pdf->Cell($col1_width, 6, '2. Alamat Usaha', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->MultiCell($col3_width, 6, $alamat_usaha, 0, 'L');
+    $pdf->Cell($col1, 6, '2. Alamat Usaha', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->MultiCell($col3, 6, $alamat_usaha, 0, 'L');
 
-    $pdf->Cell($col1_width, 6, '3. No. Telp Perusahaan', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->Cell($col3_width, 6, $data['no_telp_perusahaan'], 0, 1);
+    $pdf->Cell($col1, 6, '3. No. Telp Perusahaan', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->Cell($col3, 6, $data['no_telp_perusahaan'], 0, 1);
 
-    $pdf->Cell($col1_width, 6, '4. Nama Pemilik', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->Cell($col3_width, 6, $data['nama_lengkap'], 0, 1);
+    $pdf->Cell($col1, 6, '4. Nama Pemilik', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->Cell($col3, 6, $data['nama_lengkap'], 0, 1);
 
-    $pdf->Cell($col1_width, 6, '5. Alamat Pemilik', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->MultiCell($col3_width, 6, $alamat_pemilik, 0, 'L');
+    $pdf->Cell($col1, 6, '5. Alamat Pemilik', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->MultiCell($col3, 6, $alamat_pemilik, 0, 'L');
 
-    $pdf->Cell($col1_width, 6, '6. No. Telp Pemilik', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->Cell($col3_width, 6, $data['no_wa'], 0, 1);
+    $pdf->Cell($col1, 6, '6. No. Telp Pemilik', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->Cell($col3, 6, $data['no_wa'], 0, 1);
 
-    $pdf->Cell($col1_width, 6, '7. E-mail', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->Cell($col3_width, 6, $data['email'], 0, 1);
+    $pdf->Cell($col1, 6, '7. E-mail', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->Cell($col3, 6, $data['email'], 0, 1);
 
-    $pdf->Cell($col1_width, 6, '8. Jenis Usaha', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->Cell($col3_width, 6, 'Industri Kecil', 0, 1);
+    $pdf->Cell($col1, 6, '8. Jenis Usaha', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->Cell($col3, 6, 'Industri Kecil', 0, 1);
 
-    $pdf->Cell($col1_width, 6, '9. Produk', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->Cell($col3_width, 6, $data['hasil_produk'], 0, 1);
+    $pdf->Cell($col1, 6, '9. Produk', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->Cell($col3, 6, $data['hasil_produk'], 0, 1);
 
-    $pdf->Cell($col1_width, 6, '10. Jumlah tenaga kerja', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->Cell($col3_width, 6, $data['jml_tenaga_kerja'] . ' orang', 0, 1);
+    $pdf->Cell($col1, 6, '10. Jumlah tenaga kerja', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->Cell($col3, 6, $data['jml_tenaga_kerja'] . ' orang', 0, 1);
 
-    $pdf->Cell($col1_width, 6, '11. Merek', 0, 0);
-    $pdf->Cell($col2_width, 6, ':', 0, 0);
-    $pdf->Cell($col3_width, 6, $merek_difasilitasi, 0, 1);
+    $pdf->Cell($col1, 6, '11. Merek', 0, 0);
+    $pdf->Cell($col2, 6, ':', 0, 0);
+    $pdf->Cell($col3, 6, $merek_difasilitasi, 0, 1);
 
     $pdf->Ln(4);
 
@@ -230,9 +240,9 @@ try {
     $pdf->Ln(2);
 
     // Tanda Tangan Digital
-    if ($ttd && file_exists($ttd['file_path'])) {
+    if ($ttd_path && file_exists($ttd_path)) {
         $pdf->Cell(100, 6, '', 0, 0);
-        $pdf->Image($ttd['file_path'], $pdf->GetX() + 105, $pdf->GetY(), 40, 20);
+        $pdf->Image($ttd_path, $pdf->GetX() + 105, $pdf->GetY(), 40, 20);
         $pdf->Ln(22);
     } else {
         $pdf->Ln(20);
@@ -244,46 +254,75 @@ try {
 
     // ===== SIMPAN PDF KE FILE =====
     $folder_surat = "uploads/surat_perpanjangan/surat_{$NIK}/";
+
     if (!file_exists($folder_surat)) {
-        mkdir($folder_surat, 0777, true);
+        if (!mkdir($folder_surat, 0777, true)) {
+            throw new Exception("Gagal membuat folder: " . $folder_surat);
+        }
     }
 
     $filename_surat = "surat_perpanjangan_{$NIK}_" . time() . ".pdf";
     $filepath_surat = $folder_surat . $filename_surat;
 
     $pdf->Output($filepath_surat, 'F');
-    error_log("PDF tersimpan di: " . $filepath_surat);
 
-    // ===== SIMPAN SURAT KE LAMPIRAN (id_jenis_file = 17) =====
+    if (!file_exists($filepath_surat)) {
+        throw new Exception("PDF tidak berhasil disimpan ke: " . $filepath_surat);
+    }
+
+    $filesize = filesize($filepath_surat);
+    error_log("✅ PDF tersimpan di: " . $filepath_surat . " (Size: " . $filesize . " bytes)");
+
+    if ($filesize < 1000) {
+        throw new Exception("File PDF terlalu kecil: " . $filesize . " bytes");
+    }
+
+    // ===== SIMPAN KE TABEL LAMPIRAN (id_jenis_file = 17) =====
     $tgl_upload_surat = date('Y-m-d H:i:s');
+
+    // ✅ Hapus surat lama jika ada (berdasarkan id_perpanjangan)
+    $stmt = $pdo->prepare("DELETE FROM lampiran WHERE id_pendaftaran = ? AND id_jenis_file = 17");
+    $stmt->execute([$id_perpanjangan]);
+
+    // ✅ Insert surat baru dengan id_perpanjangan POSITIF
     $stmt = $pdo->prepare("
         INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path) 
         VALUES (?, 17, ?, ?)
     ");
     $result_surat = $stmt->execute([
-        -$id_perpanjangan,  // ID negatif untuk perpanjangan
+        $id_perpanjangan,  // ✅ Gunakan positif
         $tgl_upload_surat,
         $filepath_surat
     ]);
 
     if (!$result_surat) {
-        throw new Exception('Gagal menyimpan surat perpanjangan ke lampiran');
+        throw new Exception('Gagal menyimpan surat ke lampiran');
     }
-    error_log("Surat perpanjangan berhasil disimpan ke lampiran dengan id_jenis_file = 17");
+
+    $id_lampiran_baru = $pdo->lastInsertId();
+    error_log("✅ Surat disimpan ke lampiran ID: " . $id_lampiran_baru);
+    error_log("✅ id_pendaftaran (id_perpanjangan): " . $id_perpanjangan);
+    error_log("✅ id_jenis_file: 17");
+    error_log("✅ file_path: " . $filepath_surat);
+
+    // Set global variable untuk digunakan di perpanjangan.php
+    $GLOBALS['filepath_surat_perpanjangan'] = $filepath_surat;
 
     // Jika direct call, output PDF untuk download
     if ($is_direct_call) {
         $pdf->Output($filename_surat, 'I');
         exit();
     }
-    // Jika dari perpanjangan.php (included), tidak perlu output PDF
+
+    error_log("=== PDF GENERATION COMPLETED SUCCESSFULLY ===");
 
 } catch (Exception $e) {
-    error_log("Error generating PDF: " . $e->getMessage());
+    error_log("❌ ERROR: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
+
     if ($is_direct_call) {
         die("Error: " . $e->getMessage());
     } else {
         throw $e;
     }
 }
-?>

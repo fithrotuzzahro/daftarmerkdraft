@@ -155,13 +155,15 @@ try {
   $baru_perpanjangan = isset($_SESSION['baru_perpanjangan']) ? $_SESSION['baru_perpanjangan'] : false;
   unset($_SESSION['baru_perpanjangan']);
 
-  // CEK APAKAH ADA PERPANJANGAN AKTIF (PINDAHKAN KE ATAS DULU)
+  // Tambahkan di bagian atas status-seleksi-pendaftaran.php, setelah ambil data perpanjangan
+
+  // ✅ CEK APAKAH ADA PERPANJANGAN AKTIF
   $stmt = $pdo->prepare("
     SELECT * FROM perpanjangan 
-    WHERE NIK = :nik 
+    WHERE NIK = :nik AND status_perpanjangan != 'Draft'
     ORDER BY tgl_pengajuan DESC 
     LIMIT 1
-  ");
+");
   $stmt->execute(['nik' => $NIK]);
   $perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -169,59 +171,43 @@ try {
   if ($perpanjangan) {
     $id_perpanjangan = $perpanjangan['id_perpanjangan'];
 
-    // Ambil Surat Permohonan Perpanjangan (id_jenis_file = 17)
-    $stmt = $pdo->prepare("
-          SELECT file_path, tgl_upload 
-          FROM lampiran 
-          WHERE id_pendaftaran = ? AND id_jenis_file = 17 
-          ORDER BY tgl_upload DESC 
-          LIMIT 1
-      ");
-    $stmt->execute([-$id_perpanjangan]);
-    $surat_permohonan_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
+    error_log("=== MENGAMBIL FILE PERPANJANGAN ===");
+    error_log("ID Perpanjangan: " . $id_perpanjangan);
 
-    // Ambil Surat Keterangan IKM Perpanjangan (id_jenis_file = 18)
-    $stmt = $pdo->prepare("
-          SELECT file_path, tgl_upload 
-          FROM lampiran 
-          WHERE id_pendaftaran = ? AND id_jenis_file = 18 
-          ORDER BY tgl_upload DESC 
-          LIMIT 1
-      ");
-    $stmt->execute([-$id_perpanjangan]);
-    $surat_ikm_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
-  }
-
-  // Jika ada perpanjangan, ambil file-file terkait
-  if ($perpanjangan) {
-    $id_perpanjangan = $perpanjangan['id_perpanjangan'];
-
-    // Ambil Surat Permohonan Perpanjangan (id_jenis_file = 17)
+    // ✅ Ambil Surat Permohonan Perpanjangan (id_jenis_file = 17)
     $stmt = $pdo->prepare("
         SELECT file_path, tgl_upload 
         FROM lampiran 
-        WHERE id_pendaftaran = ? AND id_jenis_file = 17 
+        WHERE id_pendaftaran = :id_perpanjangan AND id_jenis_file = 17 
         ORDER BY tgl_upload DESC 
         LIMIT 1
     ");
-    $stmt->execute([-$id_perpanjangan]);
+    $stmt->execute(['id_perpanjangan' => $id_perpanjangan]);
     $surat_permohonan_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // Ambil Surat Keterangan IKM Perpanjangan (id_jenis_file = 18)
+    if ($surat_permohonan_perpanjangan) {
+      error_log("✅ Surat permohonan ditemukan: " . $surat_permohonan_perpanjangan['file_path']);
+      error_log("File exists: " . (file_exists($surat_permohonan_perpanjangan['file_path']) ? 'YES' : 'NO'));
+    } else {
+      error_log("❌ Surat permohonan TIDAK ditemukan untuk id_perpanjangan = " . $id_perpanjangan);
+    }
+
+    // ✅ Ambil Surat Keterangan IKM Perpanjangan (id_jenis_file = 18)
     $stmt = $pdo->prepare("
         SELECT file_path, tgl_upload 
         FROM lampiran 
-        WHERE id_pendaftaran = ? AND id_jenis_file = 18 
+        WHERE id_pendaftaran = :id_perpanjangan AND id_jenis_file = 18 
         ORDER BY tgl_upload DESC 
         LIMIT 1
     ");
-    $stmt->execute([-$id_perpanjangan]);
+    $stmt->execute(['id_perpanjangan' => $id_perpanjangan]);
     $surat_ikm_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
-  }
 
-  if (!$pendaftaran) {
-    header("Location: form-pendaftaran.php");
-    exit;
+    if ($surat_ikm_perpanjangan) {
+      error_log("✅ Surat IKM perpanjangan ditemukan: " . $surat_ikm_perpanjangan['file_path']);
+    } else {
+      error_log("⚠️ Surat IKM perpanjangan belum ada (normal jika belum diupload admin)");
+    }
   }
 
   // Ambil alasan dari database
@@ -410,14 +396,14 @@ try {
                         <strong>File Tersedia</strong>
                         <p class="mb-0 mt-2 small">
                           <i class="fa-solid fa-calendar me-1"></i>
-                          Diupload: <?php echo date('d/m/Y H:i', strtotime($surat_permohonan_perpanjangan['tgl_upload'])); ?> WIB
+                          Dibuat: <?php echo date('d/m/Y H:i', strtotime($surat_permohonan_perpanjangan['tgl_upload'])); ?> WIB
                         </p>
                       </div>
                       <div class="d-grid gap-2">
                         <button class="btn btn-sm btn-outline-primary btn-view"
                           data-src="<?php echo htmlspecialchars($surat_permohonan_perpanjangan['file_path']); ?>"
                           data-title="Surat Permohonan Perpanjangan">
-                          <i class="bi bi-eye me-1"></i>Preview
+                          <i class="fas fa-eye me-1"></i> Preview
                         </button>
                         <a class="btn btn-primary btn-sm" href="<?php echo htmlspecialchars($surat_permohonan_perpanjangan['file_path']); ?>" download>
                           <i class="fa-solid fa-download me-1"></i> Download
@@ -427,6 +413,7 @@ try {
                       <div class="alert alert-warning mb-0">
                         <i class="fa-solid fa-exclamation-triangle me-2"></i>
                         <strong>Belum Tersedia</strong>
+                        <p class="mb-0 mt-2 small">Surat sedang diproses...</p>
                       </div>
                     <?php endif; ?>
                   </div>
@@ -454,7 +441,7 @@ try {
                         <button class="btn btn-sm btn-outline-success btn-view"
                           data-src="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>"
                           data-title="Surat Keterangan IKM Perpanjangan">
-                          <i class="bi bi-eye me-1"></i>Preview
+                          <i class="fas fa-eye me-1"></i> Preview
                         </button>
                         <a class="btn btn-success btn-sm" href="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>" download>
                           <i class="fa-solid fa-download me-1"></i> Download
@@ -502,7 +489,7 @@ try {
                         <button class="btn btn-sm btn-outline-primary btn-view"
                           data-src="<?php echo htmlspecialchars($surat_permohonan_perpanjangan['file_path']); ?>"
                           data-title="Surat Permohonan Perpanjangan">
-                          <i class="bi bi-eye me-1"></i>Preview
+                          <i class="fas fa-eye me-1"></i> Preview
                         </button>
                         <a class="btn btn-primary btn-sm" href="<?php echo htmlspecialchars($surat_permohonan_perpanjangan['file_path']); ?>" download>
                           <i class="fa-solid fa-download me-1"></i> Download
@@ -530,7 +517,7 @@ try {
                         <button class="btn btn-sm btn-outline-success btn-view"
                           data-src="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>"
                           data-title="Surat Keterangan IKM Perpanjangan">
-                          <i class="bi bi-eye me-1"></i>Preview
+                          <i class="fas fa-eye me-1"></i> Preview
                         </button>
                         <a class="btn btn-success btn-sm" href="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>" download>
                           <i class="fa-solid fa-download me-1"></i> Download

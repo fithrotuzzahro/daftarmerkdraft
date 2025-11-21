@@ -6,13 +6,306 @@ include 'process/config_db.php';
 
 // ===== CEK APAKAH USER SUDAH LOGIN =====
 if (!isset($_SESSION['NIK_NIP'])) {
+    // Jika AJAX request
+    if (isset($_POST['ajax_action'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Session expired. Please login again.']);
+        exit();
+    }
     header("Location: login.php");
     exit();
 }
 
 $NIK = $_SESSION['NIK_NIP'];
 
+// ===== HANDLER AJAX GENERATE SURAT =====
+// ===== HANDLER AJAX GENERATE SURAT =====
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action']) && $_POST['ajax_action'] === 'generate_surat') {
+    // Matikan semua output buffering dulu
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Start fresh output buffer
+    ob_start();
+    
+    // PENTING: Set header JSON di awal
+    header('Content-Type: application/json');
+    
+    // Matikan error display
+    ini_set('display_errors', 0);
+    error_reporting(E_ALL);
+
+    try {
+        error_log("=== AJAX GENERATE SURAT STARTED ===");
+        error_log("NIK: " . $NIK);
+
+        $signature_data = $_POST['signature_data'] ?? '';
+        if (empty($signature_data)) {
+            throw new Exception('Data tanda tangan kosong');
+        }
+
+        error_log("Signature data length: " . strlen($signature_data));
+
+        // Start transaction
+        $pdo->beginTransaction();
+
+        // Ambil data pendaftaran terakhir
+        $stmt = $pdo->prepare("
+            SELECT p.*, u.id_usaha
+            FROM pendaftaran p
+            LEFT JOIN datausaha u ON p.id_usaha = u.id_usaha
+            WHERE p.NIK = :nik 
+            ORDER BY p.tgl_daftar DESC
+            LIMIT 1
+        ");
+        $stmt->execute(['nik' => $NIK]);
+        $pendaftaran_lama = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$pendaftaran_lama) {
+            throw new Exception('Data pendaftaran tidak ditemukan');
+        }
+
+        error_log("Pendaftaran ID: " . $pendaftaran_lama['id_pendaftaran']);
+
+        // Cek apakah sudah ada draft perpanjangan
+        $stmt = $pdo->prepare("
+            SELECT id_perpanjangan FROM perpanjangan 
+            WHERE NIK = :nik AND status_perpanjangan = 'Draft'
+            ORDER BY tgl_pengajuan DESC LIMIT 1
+        ");
+        $stmt->execute(['nik' => $NIK]);
+        $draft_existing = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($draft_existing) {
+            $id_perpanjangan = $draft_existing['id_perpanjangan'];
+            error_log("Menggunakan draft perpanjangan yang sudah ada: " . $id_perpanjangan);
+        } else {
+            $tgl_pengajuan = date('Y-m-d H:i:s');
+
+            $stmt = $pdo->prepare("
+                INSERT INTO perpanjangan (id_pendaftaran_lama, NIK, id_usaha, tgl_pengajuan, status_perpanjangan)
+                VALUES (?, ?, ?, ?, 'Draft')
+            ");
+
+            $result = $stmt->execute([
+                $pendaftaran_lama['id_pendaftaran'],
+                $NIK,
+                $pendaftaran_lama['id_usaha'],
+                $tgl_pengajuan
+            ]);
+
+            if (!$result) {
+                throw new Exception('Gagal menyimpan data perpanjangan');
+            }
+
+            $id_perpanjangan = $pdo->lastInsertId();
+            error_log("ID Perpanjangan Draft Baru: " . $id_perpanjangan);
+        }
+
+        // Simpan tanda tangan
+        $signature_data = str_replace('data:image/png;base64,', '', $signature_data);
+        $signature_data = str_replace(' ', '+', $signature_data);
+        $signature_decoded = base64_decode($signature_data, true);
+
+        if (!$signature_decoded) {
+            throw new Exception('Gagal decode tanda tangan');
+        }
+
+        error_log("Signature decoded successfully, size: " . strlen($signature_decoded));
+
+        $folder = "uploads/ttd_perpanjangan/ttd_{$NIK}/";
+        if (!file_exists($folder)) {
+            if (!mkdir($folder, 0777, true)) {
+                throw new Exception('Gagal membuat folder: ' . $folder);
+            }
+        }
+
+        // Hapus TTD lama jika ada
+        $stmt = $pdo->prepare("SELECT file_ttd FROM perpanjangan WHERE id_perpanjangan = ?");
+        $stmt->execute([$id_perpanjangan]);
+        $old_ttd = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($old_ttd && $old_ttd['file_ttd'] && file_exists($old_ttd['file_ttd'])) {
+            unlink($old_ttd['file_ttd']);
+            error_log("Old TTD deleted: " . $old_ttd['file_ttd']);
+        }
+
+        $filename = "ttd_{$NIK}_" . time() . ".png";
+        $filepath = $folder . $filename;
+
+        $bytes_written = file_put_contents($filepath, $signature_decoded);
+        if ($bytes_written === false) {
+            throw new Exception('Gagal menyimpan tanda tangan ke file');
+        }
+
+        error_log("TTD saved: " . $filepath . " (" . $bytes_written . " bytes)");
+
+        // Update perpanjangan dengan file_ttd
+        $stmt = $pdo->prepare("UPDATE perpanjangan SET file_ttd = ? WHERE id_perpanjangan = ?");
+        if (!$stmt->execute([$filepath, $id_perpanjangan])) {
+            throw new Exception('Gagal update file_ttd di database');
+        }
+
+        error_log("Starting PDF generation...");
+
+        // Generate PDF Surat - PERBAIKAN DI SINI
+        if (!file_exists(__DIR__ . '/vendor/autoload.php')) {
+            throw new Exception('Autoload vendor tidak ditemukan');
+        }
+        
+        require_once __DIR__ . '/vendor/autoload.php';
+
+        $GLOBALS['id_perpanjangan_global'] = $id_perpanjangan;
+        $GLOBALS['pdo_global'] = $pdo;
+        $GLOBALS['NIK_global'] = $NIK;
+
+        // PERBAIKAN: Cek file exist
+        $generate_file = __DIR__ . '/generate_surat_perpanjangan.php';
+        if (!file_exists($generate_file)) {
+            throw new Exception('File generate_surat_perpanjangan.php tidak ditemukan');
+        }
+
+        // Capture semua output dari generate script
+        ob_start();
+        try {
+            define('GENERATE_FROM_PERPANJANGAN', true);
+            require_once $generate_file;
+        } catch (Exception $genError) {
+            ob_end_clean();
+            throw new Exception('Error saat generate PDF: ' . $genError->getMessage());
+        }
+        $generate_output = ob_get_clean();
+
+        if (!empty($generate_output)) {
+            error_log("Generate script output (discarded): " . substr($generate_output, 0, 500));
+        }
+
+        error_log("PDF generation completed");
+
+        // Ambil path surat yang baru dibuat
+        $stmt = $pdo->prepare("
+            SELECT file_path FROM lampiran 
+            WHERE id_pendaftaran = ? AND id_jenis_file = 17 
+            ORDER BY tgl_upload DESC LIMIT 1
+        ");
+        $stmt->execute([$id_perpanjangan]);
+        $surat = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$surat) {
+            throw new Exception('Surat gagal dibuat - tidak ditemukan di database');
+        }
+
+        if (!file_exists($surat['file_path'])) {
+            throw new Exception('File surat tidak ditemukan: ' . $surat['file_path']);
+        }
+
+        error_log("Surat file verified: " . $surat['file_path']);
+
+        // Simpan id_perpanjangan ke session untuk digunakan saat submit
+        $_SESSION['draft_id_perpanjangan'] = $id_perpanjangan;
+
+        $pdo->commit();
+        error_log("=== AJAX GENERATE SURAT COMPLETED ===");
+
+        // PERBAIKAN: Bersihkan buffer dan output JSON
+        ob_clean();
+        
+        $response = [
+            'success' => true,
+            'message' => 'Surat berhasil dibuat',
+            'file_path' => $surat['file_path'],
+            'id_perpanjangan' => $id_perpanjangan
+        ];
+        
+        echo json_encode($response);
+        ob_end_flush();
+        exit();
+        
+    } catch (Exception $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("❌ AJAX Error: " . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
+
+        // PERBAIKAN: Bersihkan buffer dan output JSON error
+        ob_clean();
+        
+        $response = [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+        
+        echo json_encode($response);
+        ob_end_flush();
+        exit();
+    }
+}
+
+// ... (lanjutkan dengan handler submit form dan ambil data seperti sebelumnya)
+
 // ===== PROSES SUBMIT FORM =====
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_perpanjangan'])) {
+    try {
+        error_log("=== SUBMIT PERPANJANGAN PROCESS ===");
+
+        // Ambil draft_id_perpanjangan dari session
+        $id_perpanjangan = $_SESSION['draft_id_perpanjangan'] ?? 0;
+
+        if (!$id_perpanjangan) {
+            throw new Exception('Draft perpanjangan tidak ditemukan. Silakan simpan tanda tangan terlebih dahulu.');
+        }
+
+        // Verifikasi draft perpanjangan
+        $stmt = $pdo->prepare("
+            SELECT * FROM perpanjangan 
+            WHERE id_perpanjangan = ? AND NIK = ? AND status_perpanjangan = 'Draft'
+        ");
+        $stmt->execute([$id_perpanjangan, $NIK]);
+        $draft = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$draft) {
+            throw new Exception('Draft perpanjangan tidak valid atau sudah disubmit');
+        }
+
+        // Update status perpanjangan menjadi aktif
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("
+            UPDATE perpanjangan 
+            SET status_perpanjangan = 'Menunggu Surat Keterangan IKM',
+                tgl_pengajuan = NOW()
+            WHERE id_perpanjangan = ?
+        ");
+        $stmt->execute([$id_perpanjangan]);
+
+        $pdo->commit();
+
+        // Hapus session draft
+        unset($_SESSION['draft_id_perpanjangan']);
+
+        // Set session untuk notifikasi
+        $_SESSION['alert_message'] = 'Permohonan perpanjangan berhasil diajukan! Surat permohonan telah dibuat.';
+        $_SESSION['alert_type'] = 'success';
+        $_SESSION['baru_perpanjangan'] = true;
+        $_SESSION['id_perpanjangan_baru'] = $id_perpanjangan;
+
+        error_log("=== PERPANJANGAN SUBMITTED SUCCESSFULLY ===");
+
+        header("Location: status-seleksi-pendaftaran.php", true, 302);
+        exit();
+    } catch (Exception $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("Submit Error: " . $e->getMessage());
+        $_SESSION['alert_message'] = 'Terjadi kesalahan: ' . $e->getMessage();
+        $_SESSION['alert_type'] = 'danger';
+        header("Location: perpanjangan.php", true, 302);
+        exit();
+    }
+}
+
 
 // ===== AMBIL DATA PENDAFTARAN TERAKHIR =====
 try {
@@ -155,6 +448,53 @@ try {
             height: auto;
             border: 1px solid #dee2e6;
             border-radius: 0.25rem;
+        }
+
+        /* Style untuk preview surat */
+        #preview-surat-container {
+            display: none;
+            margin-top: 2rem;
+            padding: 1.5rem;
+            border: 2px solid #28a745;
+            border-radius: 0.5rem;
+            background-color: #f8f9fa;
+        }
+
+        #preview-surat-container.show {
+            display: block;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .preview-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #28a745;
+        }
+
+        .preview-header h5 {
+            margin: 0;
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .preview-actions {
+            display: flex;
+            gap: 0.5rem;
         }
     </style>
 </head>
@@ -369,13 +709,45 @@ try {
 
                             <div class="signature-preview" id="signature-preview">
                                 <label class="form-label">Preview Tanda Tangan:</label>
-                                <img id="signature-image" src="/placeholder.svg" alt="Tanda Tangan">
+                                <img id="signature-image" src="" alt="Tanda Tangan">
                             </div>
 
                             <input type="hidden" name="signature_data" id="signature-data" required>
                         </div>
 
+                        <!-- ✅ PREVIEW SURAT PERPANJANGAN -->
+                        <div id="preview-surat-container">
+                            <div class="preview-header">
+                                <h5>
+                                    <i class="fas fa-file-signature me-2"></i>
+                                    Surat Permohonan Perpanjangan
+                                </h5>
+                                <div class="preview-actions">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="btn-preview-surat">
+                                        <i class="fas fa-eye me-1"></i> Lihat Surat
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle me-2"></i>
+                                <strong>Surat Berhasil Dibuat!</strong>
+                                <p class="mb-0 mt-2">Surat permohonan perpanjangan telah dibuat. Anda dapat melihat preview surat dengan menekan tombol "Lihat Surat" di atas.</p>
+                            </div>
+
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>Langkah Selanjutnya:</strong>
+                                <ol class="mb-0 mt-2" style="padding-left: 20px;">
+                                    <li>Periksa surat permohonan yang telah dibuat</li>
+                                    <li>Jika sudah sesuai, klik tombol <strong>"Kirim Permohonan Perpanjangan"</strong> di bawah</li>
+                                    <li>Surat akan tersimpan dan dapat didownload di halaman status</li>
+                                </ol>
+                            </div>
+                        </div>
+
                         <!-- Submit Button -->
+                        <input type="hidden" name="submit_perpanjangan" value="1">
                         <div class="text-center mt-4">
                             <div class="alert alert-warning d-inline-block mb-3" style="max-width: 600px;">
                                 <i class="bi bi-exclamation-triangle me-2"></i>
@@ -386,7 +758,7 @@ try {
                                 <i class="fas fa-paper-plane pe-2"></i> Kirim Permohonan Perpanjangan
                             </button>
                             <br>
-                            <small class="text-muted mt-2">* Tombol akan aktif setelah tanda tangan dibuat</small>
+                            <small class="text-muted mt-2" id="submit-hint">* Tombol akan aktif setelah tanda tangan dibuat</small>
                         </div>
                     </form>
                 </div>
@@ -412,7 +784,7 @@ try {
                 </div>
                 <div class="modal-body p-3">
                     <div id="imageContainer" style="display: none;">
-                        <img id="modalImage" src="/placeholder.svg" alt="Preview" class="img-fluid rounded" style="max-height: 50vh; width: 100%; object-fit: contain;" />
+                        <img id="modalImage" src="" alt="Preview" class="img-fluid rounded" style="max-height: 50vh; width: 100%; object-fit: contain;" />
                     </div>
                     <div id="pdfContainer" style="display: none;">
                         <iframe id="modalPdf" src="" style="width: 100%; height: 50vh; border: 1px solid #dee2e6; border-radius: 0.375rem;"></iframe>
@@ -432,20 +804,21 @@ try {
         // Alert Modal
         function showAlert(message, type = 'warning') {
             const icon = type === 'danger' ? '❌' : type === 'success' ? '✅' : '⚠️';
-            const alertModal = ``
-                + '<div class="modal fade" id="alertModal" tabindex="-1">'
-                + '    <div class="modal-dialog modal-dialog-centered modal-sm">'
-                + '        <div class="modal-content">'
-                + '            <div class="modal-body text-center p-4">'
-                + '                <div class="fs-1 mb-3">' + icon + '</div>'
-                + '                <p class="mb-0" style="white-space: pre-line;">' + message + '</p>'
-                + '            </div>'
-                + '            <div class="modal-footer border-0 justify-content-center">'
-                + '                <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>'
-                + '            </div>'
-                + '        </div>'
-                + '    </div>'
-                + '</div>';
+            const alertModal = `
+                <div class="modal fade" id="alertModal" tabindex="-1">
+                    <div class="modal-dialog modal-dialog-centered modal-sm">
+                        <div class="modal-content">
+                            <div class="modal-body text-center p-4">
+                                <div class="fs-1 mb-3">${icon}</div>
+                                <p class="mb-0" style="white-space: pre-line;">${message}</p>
+                            </div>
+                            <div class="modal-footer border-0 justify-content-center">
+                                <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
             const existingModal = document.getElementById('alertModal');
             if (existingModal) existingModal.remove();
             document.body.insertAdjacentHTML('beforeend', alertModal);
@@ -465,7 +838,7 @@ try {
             ?>
         <?php endif; ?>
 
-        // Signature Pad
+        // Signature Pad Variables
         const canvas = document.getElementById('signature-pad');
         const ctx = canvas.getContext('2d');
         const clearBtn = document.getElementById('clear-signature');
@@ -474,11 +847,16 @@ try {
         const signaturePreview = document.getElementById('signature-preview');
         const signatureImage = document.getElementById('signature-image');
         const btnSubmit = document.getElementById('btnSubmit');
+        const previewSuratContainer = document.getElementById('preview-surat-container');
+        const submitHint = document.getElementById('submit-hint');
 
         let isDrawing = false;
         let lastX = 0;
         let lastY = 0;
+        let suratGenerated = false;
+        let currentSuratPath = '';
 
+        // Setup Canvas
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.strokeStyle = '#000';
@@ -486,6 +864,7 @@ try {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
+        // Drawing Functions
         function getPosition(e) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -538,38 +917,172 @@ try {
             isDrawing = false;
         }
 
+        // Clear Button Handler
         clearBtn.addEventListener('click', () => {
             ctx.fillStyle = 'white';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             signatureData.value = '';
             signaturePreview.style.display = 'none';
+            previewSuratContainer.classList.remove('show');
             btnSubmit.disabled = true;
+            suratGenerated = false;
+            currentSuratPath = '';
+            submitHint.textContent = '* Tombol akan aktif setelah tanda tangan dibuat';
         });
 
-        saveBtn.addEventListener('click', () => {
+        // ✅ SAVE SIGNATURE - GENERATE SURAT OTOMATIS VIA AJAX
+        saveBtn.addEventListener('click', async () => {
             const imageData = canvas.toDataURL('image/png');
+
+            if (!imageData || imageData === 'data:,') {
+                showAlert('Silakan buat tanda tangan terlebih dahulu!', 'warning');
+                return;
+            }
+
+            // Tampilkan preview tanda tangan
             signatureData.value = imageData;
             signatureImage.src = imageData;
             signaturePreview.style.display = 'block';
-            btnSubmit.disabled = false;
-            showAlert('Tanda tangan berhasil disimpan!', 'success');
+
+            // Disable button saat proses
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Membuat Surat...';
+
+            try {
+                // Kirim AJAX untuk generate surat
+                const formData = new FormData();
+                formData.append('ajax_action', 'generate_surat');
+                formData.append('signature_data', imageData);
+
+                const response = await fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                // Debug: Cek response
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers.get('content-type'));
+
+                // Cek apakah response adalah JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Response bukan JSON:', text);
+                    throw new Error('Server mengembalikan response yang tidak valid. Silakan periksa console untuk detail.');
+                }
+
+                const result = await response.json();
+                console.log('Result:', result);
+
+                if (result.success) {
+                    // Surat berhasil dibuat
+                    currentSuratPath = result.file_path;
+                    suratGenerated = true;
+
+                    // Tampilkan preview surat
+                    previewSuratContainer.classList.add('show');
+
+                    // Aktifkan tombol submit
+                    btnSubmit.disabled = false;
+                    submitHint.textContent = '* Periksa surat terlebih dahulu sebelum mengirim';
+
+                    // Restore button
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> Simpan Tanda Tangan';
+
+                    showAlert('Tanda tangan berhasil disimpan!\n\nSurat permohonan perpanjangan telah dibuat.\nSilakan periksa surat di bawah sebelum mengirim.', 'success');
+
+                    // Scroll ke preview surat
+                    setTimeout(() => {
+                        previewSuratContainer.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'nearest'
+                        });
+                    }, 500);
+                } else {
+                    throw new Error(result.message || 'Gagal membuat surat');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('Terjadi kesalahan saat membuat surat: ' + error.message, 'danger');
+
+                // Restore button
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-check me-1"></i> Simpan Tanda Tangan';
+            }
         });
 
+        // ✅ HANDLER PREVIEW SURAT (Modal PDF)
+        document.getElementById('btn-preview-surat').addEventListener('click', function() {
+            if (!currentSuratPath) {
+                showAlert('Surat belum tersedia. Silakan simpan tanda tangan terlebih dahulu.', 'warning');
+                return;
+            }
+
+            // Buka modal preview
+            const modalTitle = document.getElementById('modalTitle');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const imageContainer = document.getElementById('imageContainer');
+            const pdfContainer = document.getElementById('pdfContainer');
+            const modalPdf = document.getElementById('modalPdf');
+
+            modalTitle.textContent = 'Surat Permohonan Perpanjangan';
+            downloadBtn.href = currentSuratPath;
+
+            imageContainer.style.display = 'none';
+            pdfContainer.style.display = 'block';
+            modalPdf.src = currentSuratPath + '#toolbar=0';
+
+            const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+            modal.show();
+        });
+
+        // ✅ HANDLER SUBMIT FORM
         document.getElementById('formPerpanjangan').addEventListener('submit', function(e) {
-            if (!signatureData.value) {
+            if (!suratGenerated || !currentSuratPath) {
                 e.preventDefault();
-                showAlert('Tanda tangan digital wajib dibuat dan disimpan!', 'danger');
+                showAlert('Silakan simpan tanda tangan dan tunggu surat dibuat terlebih dahulu!', 'warning');
                 return false;
             }
-            if (!confirm('Apakah Anda yakin data yang ditampilkan masih valid dan ingin mengajukan perpanjangan sertifikat?')) {
+
+            if (!confirm('Apakah Anda yakin data yang ditampilkan masih valid dan ingin mengajukan perpanjangan sertifikat?\n\nSurat permohonan akan dikirim dan tersimpan di sistem.')) {
                 e.preventDefault();
                 return false;
             }
+
             btnSubmit.disabled = true;
-            btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin pe-2"></i> Memproses...';
+            btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin pe-2"></i> Mengirim Permohonan...';
         });
 
-        // Preview sertifikat
+        // Alert Modal Function
+        function showAlert(message, type = 'warning') {
+            const icon = type === 'danger' ? '❌' : type === 'success' ? '✅' : '⚠️';
+            const alertModal = `
+        <div class="modal fade" id="alertModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered modal-sm">
+                <div class="modal-content">
+                    <div class="modal-body text-center p-4">
+                        <div class="fs-1 mb-3">${icon}</div>
+                        <p class="mb-0" style="white-space: pre-line;">${message}</p>
+                    </div>
+                    <div class="modal-footer border-0 justify-content-center">
+                        <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+            const existingModal = document.getElementById('alertModal');
+            if (existingModal) existingModal.remove();
+            document.body.insertAdjacentHTML('beforeend', alertModal);
+            const modal = new bootstrap.Modal(document.getElementById('alertModal'));
+            modal.show();
+            document.getElementById('alertModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
+        }
+
+        // Preview Sertifikat Handler
         document.querySelectorAll('.btn-view-sertifikat').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -580,25 +1093,21 @@ try {
                 const downloadBtn = document.getElementById('downloadBtn');
                 const imageContainer = document.getElementById('imageContainer');
                 const pdfContainer = document.getElementById('pdfContainer');
-                const modalImg = document.getElementById('modalImage');
                 const modalPdf = document.getElementById('modalPdf');
+
                 modalTitle.textContent = title;
                 downloadBtn.href = src;
-                const fileExtension = src.split('.').pop().toLowerCase();
-                if (fileExtension === 'pdf') {
-                    imageContainer.style.display = 'none';
-                    pdfContainer.style.display = 'block';
-                    modalPdf.src = src + '#toolbar=0';
-                } else {
-                    pdfContainer.style.display = 'none';
-                    imageContainer.style.display = 'block';
-                    modalImg.src = src;
-                }
+
+                imageContainer.style.display = 'none';
+                pdfContainer.style.display = 'block';
+                modalPdf.src = src + '#toolbar=0';
+
                 const modal = new bootstrap.Modal(document.getElementById('imageModal'));
                 modal.show();
             });
         });
 
+        // Clean up modal saat ditutup
         const imageModal = document.getElementById('imageModal');
         imageModal.addEventListener('hidden.bs.modal', function() {
             document.getElementById('modalPdf').src = '';
