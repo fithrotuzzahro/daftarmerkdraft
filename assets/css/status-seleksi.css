@@ -62,21 +62,26 @@ body.modal-open {
   text-align: end;
   cursor: default;
 }
+
 .proses-tidakbisadifasilitasi {
   background-color: #CB0404 !important;
-} 
+}
+
 .proses-konfirmasilanjut {
   background-color: #1B0D87 !important;
-} 
+}
+
 .proses-melengkapisurat {
   background-color: #0D6987 !important;
-} 
+}
+
 .proses-diajukankekementerian {
   background-color: #065D3A !important;
-} 
+}
+
 .proses-sertifikatterbit {
   background-color: #06923E !important;
-} 
+}
 
 .proses-buktiterbit {
   background-color: #9CA413;
@@ -248,10 +253,124 @@ body.modal-open {
   animation: pulse-warning 2s infinite;
 }
 
+.step-card {
+  background: #fff;
+  border: 2px solid #0d6efd;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.step-header {
+  background: #0d6efd;
+  color: white;
+  padding: 1rem 1.5rem;
+  border-radius: 6px 6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.step-number {
+  background: white;
+  color: #0d6efd;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.step-body {
+  padding: 1.5rem;
+}
+
+.warning-box {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 1rem;
+  display: flex;
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.warning-icon {
+  color: #ffc107;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.card {
+  transition: all 0.3s ease;
+}
+
+
+.card.border-primary {
+  border-width: 2px !important;
+}
+
+.card.border-success {
+  border-width: 2px !important;
+}
+
+.btn-dark,
+.btn-success {
+  transition: all 0.3s ease;
+  font-weight: 600;
+}
+
+.btn-dark:hover {
+  background-color: #000;
+}
+
+.btn-success:hover {
+  background-color: #157347;
+}
+
+.alert {
+  border-radius: 8px;
+}
+
+.alert-success {
+  background-color: #d1e7dd;
+  border-color: #badbcc;
+  color: #0f5132;
+}
+
+.alert-warning {
+  background-color: #fff3cd;
+  border-color: #ffecb5;
+  color: #664d03;
+}
+
+.alert-info {
+  background-color: #cff4fc;
+  border-color: #b6effb;
+  color: #055160;
+}
+
+@media (max-width: 768px) {
+  .card {
+    margin-bottom: 1rem;
+  }
+
+  .btn-dark,
+  .btn-success {
+    font-size: 0.9rem;
+    padding: 0.5rem 1rem;
+  }
+}
+
 @keyframes pulse-warning {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4);
   }
+
   50% {
     box-shadow: 0 0 0 10px rgba(255, 193, 7, 0);
   }
@@ -262,12 +381,16 @@ body.modal-open {
 }
 
 @keyframes rotate-icon {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: rotate(0deg);
   }
+
   25% {
     transform: rotate(-15deg);
   }
+
   75% {
     transform: rotate(15deg);
   }

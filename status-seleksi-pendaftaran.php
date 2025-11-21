@@ -124,7 +124,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_action'])) {
   }
 }
 
+
 // AMBIL DATA PENDAFTARAN
+// AMBIL DATA PENDAFTARAN DULU (PINDAHKAN KE ATAS)
 try {
   $stmt = $pdo->prepare("
         SELECT p.*, 
@@ -143,6 +145,79 @@ try {
     ");
   $stmt->execute(['nik' => $NIK]);
   $pendaftaran = $stmt->fetch(PDO::FETCH_ASSOC);
+
+  if (!$pendaftaran) {
+    header("Location: form-pendaftaran.php");
+    exit;
+  }
+
+  // BARU SEKARANG AMBIL SURAT PERPANJANGAN (SETELAH $pendaftaran ADA)
+  $baru_perpanjangan = isset($_SESSION['baru_perpanjangan']) ? $_SESSION['baru_perpanjangan'] : false;
+  unset($_SESSION['baru_perpanjangan']);
+
+  // CEK APAKAH ADA PERPANJANGAN AKTIF (PINDAHKAN KE ATAS DULU)
+  $stmt = $pdo->prepare("
+    SELECT * FROM perpanjangan 
+    WHERE NIK = :nik 
+    ORDER BY tgl_pengajuan DESC 
+    LIMIT 1
+  ");
+  $stmt->execute(['nik' => $NIK]);
+  $perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
+
+  // Jika ada perpanjangan, ambil file-file terkait
+  if ($perpanjangan) {
+    $id_perpanjangan = $perpanjangan['id_perpanjangan'];
+
+    // Ambil Surat Permohonan Perpanjangan (id_jenis_file = 17)
+    $stmt = $pdo->prepare("
+          SELECT file_path, tgl_upload 
+          FROM lampiran 
+          WHERE id_pendaftaran = ? AND id_jenis_file = 17 
+          ORDER BY tgl_upload DESC 
+          LIMIT 1
+      ");
+    $stmt->execute([-$id_perpanjangan]);
+    $surat_permohonan_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Ambil Surat Keterangan IKM Perpanjangan (id_jenis_file = 18)
+    $stmt = $pdo->prepare("
+          SELECT file_path, tgl_upload 
+          FROM lampiran 
+          WHERE id_pendaftaran = ? AND id_jenis_file = 18 
+          ORDER BY tgl_upload DESC 
+          LIMIT 1
+      ");
+    $stmt->execute([-$id_perpanjangan]);
+    $surat_ikm_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
+  }
+
+  // Jika ada perpanjangan, ambil file-file terkait
+  if ($perpanjangan) {
+    $id_perpanjangan = $perpanjangan['id_perpanjangan'];
+
+    // Ambil Surat Permohonan Perpanjangan (id_jenis_file = 17)
+    $stmt = $pdo->prepare("
+        SELECT file_path, tgl_upload 
+        FROM lampiran 
+        WHERE id_pendaftaran = ? AND id_jenis_file = 17 
+        ORDER BY tgl_upload DESC 
+        LIMIT 1
+    ");
+    $stmt->execute([-$id_perpanjangan]);
+    $surat_permohonan_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Ambil Surat Keterangan IKM Perpanjangan (id_jenis_file = 18)
+    $stmt = $pdo->prepare("
+        SELECT file_path, tgl_upload 
+        FROM lampiran 
+        WHERE id_pendaftaran = ? AND id_jenis_file = 18 
+        ORDER BY tgl_upload DESC 
+        LIMIT 1
+    ");
+    $stmt->execute([-$id_perpanjangan]);
+    $surat_ikm_perpanjangan = $stmt->fetch(PDO::FETCH_ASSOC);
+  }
 
   if (!$pendaftaran) {
     header("Location: form-pendaftaran.php");
@@ -285,242 +360,195 @@ try {
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/status-seleksi.css" />
-  <style>
-    .step-card {
-      background: #fff;
-      border: 2px solid #0d6efd;
-      border-radius: 8px;
-      margin-bottom: 1.5rem;
-    }
-
-    .step-header {
-      background: #0d6efd;
-      color: white;
-      padding: 1rem 1.5rem;
-      border-radius: 6px 6px 0 0;
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-
-    .step-number {
-      background: white;
-      color: #0d6efd;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      font-size: 1.2rem;
-    }
-
-    .step-body {
-      padding: 1.5rem;
-    }
-
-    .warning-box {
-      background: #fff3cd;
-      border: 1px solid #ffc107;
-      border-radius: 6px;
-      padding: 1rem;
-      display: flex;
-      align-items: start;
-      gap: 0.75rem;
-    }
-
-    .warning-icon {
-      color: #ffc107;
-      font-size: 1.5rem;
-      flex-shrink: 0;
-    }
-
-    .card {
-      transition: all 0.3s ease;
-    }
-
-
-    .card.border-primary {
-      border-width: 2px !important;
-    }
-
-    .card.border-success {
-      border-width: 2px !important;
-    }
-
-    .btn-dark,
-    .btn-success {
-      transition: all 0.3s ease;
-      font-weight: 600;
-    }
-
-    .btn-dark:hover {
-      background-color: #000;
-    }
-
-    .btn-success:hover {
-      background-color: #157347;
-    }
-
-    .alert {
-      border-radius: 8px;
-    }
-
-    .alert-success {
-      background-color: #d1e7dd;
-      border-color: #badbcc;
-      color: #0f5132;
-    }
-
-    .alert-warning {
-      background-color: #fff3cd;
-      border-color: #ffecb5;
-      color: #664d03;
-    }
-
-    .alert-info {
-      background-color: #cff4fc;
-      border-color: #b6effb;
-      color: #055160;
-    }
-
-    @media (max-width: 768px) {
-      .card {
-        margin-bottom: 1rem;
-      }
-
-      .btn-dark,
-      .btn-success {
-        font-size: 0.9rem;
-        padding: 0.5rem 1rem;
-      }
-    }
-  </style>
 </head>
 
 <body>
   <?php include 'navbar-login.php' ?>
   <main class="main-content">
     <div class="container">
-      <?php if ($is_perpanjangan): ?>
-        <div class="alert alert-info mb-4">
-          <i class="fa-solid fa-rotate me-2"></i>
-          <strong>Permohonan Perpanjangan Sertifikat Merek</strong>
-        </div>
-
-        <div class="info-card mb-4">
-          <div class="info-header">
-            <h2 class="info-title">
-              <i class="fa-solid fa-file-invoice me-2"></i>
-              Surat Keterangan untuk Perpanjangan Merek
-            </h2>
-          </div>
-
-          <hr class="border-2 border-secondary w-100 line" />
-
-          <div class="row g-3">
-            <!-- Surat Permohonan Perpanjangan -->
-            <?php if ($surat_perpanjangan && file_exists($surat_perpanjangan['file_path'])): ?>
-              <div class="col-md-6">
-                <div class="card border-primary h-100">
-                  <div class="card-body">
-                    <div class="text-center mb-3">
-                      <i class="fa-solid fa-file-alt text-primary" style="font-size: 3rem;"></i>
-                    </div>
-                    <h6 class="fw-bold text-center mb-3">Surat Permohonan Perpanjangan</h6>
-                    <div class="alert alert-success mb-3">
-                      <small>
-                        <i class="fa-solid fa-check-circle me-1"></i>
-                        <strong>File Tersedia</strong>
-                      </small>
-                      <p class="mb-0 mt-1" style="font-size: 0.85rem;">
-                        <i class="fa-solid fa-calendar me-1"></i>
-                        Dibuat: <?php echo date('d/m/Y H:i', strtotime($surat_perpanjangan['tgl_upload'])); ?> WIB
-                      </p>
-                    </div>
-                    <div class="d-grid gap-2">
-                      <button class="btn btn-sm btn-outline-primary btn-view"
-                        data-src="<?php echo htmlspecialchars($surat_perpanjangan['file_path']); ?>"
-                        data-title="Surat Permohonan Perpanjangan">
-                        <i class="fas fa-eye me-1"></i> Preview
-                      </button>
-                      <a class="btn btn-primary btn-sm" href="<?php echo htmlspecialchars($surat_perpanjangan['file_path']); ?>" download>
-                        <i class="fa-solid fa-download me-1"></i> Download
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            <?php endif; ?>
-
-            <!-- Sertifikat Lama -->
-            <?php if ($sertifikat_lama_perpanjangan && file_exists($sertifikat_lama_perpanjangan['file_path'])): ?>
-              <div class="col-md-6">
-                <div class="card border-success h-100">
-                  <div class="card-body">
-                    <div class="text-center mb-3">
-                      <i class="fa-solid fa-certificate text-success" style="font-size: 3rem;"></i>
-                    </div>
-                    <h6 class="fw-bold text-center mb-3">Sertifikat Merek Lama</h6>
-                    <div class="alert alert-success mb-3">
-                      <small>
-                        <i class="fa-solid fa-check-circle me-1"></i>
-                        <strong>File Tersedia</strong>
-                      </small>
-                      <p class="mb-0 mt-1" style="font-size: 0.85rem;">
-                        <i class="fa-solid fa-calendar me-1"></i>
-                        Diupload: <?php echo date('d/m/Y H:i', strtotime($sertifikat_lama_perpanjangan['tgl_upload'])); ?> WIB
-                      </p>
-                    </div>
-                    <div class="d-grid gap-2">
-                      <button class="btn btn-sm btn-outline-success btn-view"
-                        data-src="<?php echo htmlspecialchars($sertifikat_lama_perpanjangan['file_path']); ?>"
-                        data-title="Sertifikat Merek Lama">
-                        <i class="fas fa-eye me-1"></i> Preview
-                      </button>
-                      <a class="btn btn-success btn-sm" href="<?php echo htmlspecialchars($sertifikat_lama_perpanjangan['file_path']); ?>" download>
-                        <i class="fa-solid fa-download me-1"></i> Download
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            <?php endif; ?>
-          </div>
-
-          <!-- Status Surat Keterangan IKM -->
-          <div class="mt-4">
-            <?php if ($surat_ikm_perpanjangan && file_exists($surat_ikm_perpanjangan['file_path'])): ?>
-              <div class="alert alert-success">
-                <i class="fa-solid fa-check-circle me-2"></i>
-                <strong>Surat Keterangan IKM Perpanjangan Sudah Tersedia!</strong>
-                <p class="mb-0 mt-2">Surat Keterangan IKM untuk perpanjangan merek Anda telah diterbitkan oleh admin.</p>
-                <div class="mt-3">
-                  <a href="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>" class="btn btn-success btn-sm" download>
-                    <i class="fa-solid fa-download me-1"></i> Download Surat Keterangan IKM
-                  </a>
-                </div>
-              </div>
-            <?php else: ?>
-              <div class="alert alert-warning">
-                <i class="fa-solid fa-hourglass-half me-2"></i>
-                <strong>Mohon Menunggu</strong>
-                <p class="mb-0 mt-2">Surat Keterangan IKM untuk perpanjangan merek sedang dalam proses. Admin akan mengirimkan dokumen ini setelah verifikasi selesai.</p>
-                <p class="mb-0 mt-2 small text-muted">
-                  <i class="fa-solid fa-info-circle me-1"></i>
-                  Anda akan mendapat notifikasi setelah Surat Keterangan IKM tersedia
-                </p>
-              </div>
-            <?php endif; ?>
-          </div>
-        </div>
-      <?php endif; ?>
       <h1 class="page-title">Status Seleksi Pendaftaran Merek</h1>
       <p class="page-description">
         Cek secara berkala untuk mengetahui perkembangan lebih<br />
         lanjut status pendaftaran merek anda.
       </p>
+
+      <?php if ($perpanjangan): ?>
+        <div class="info-card mt-4 mb-5">
+          <div class="info-header">
+            <h2 class="info-title">
+              <i class="fa-solid fa-rotate me-2"></i>
+              Status Perpanjangan Sertifikat
+            </h2>
+          </div>
+
+          <hr class="border-2 border-secondary w-100 line" />
+
+          <?php if ($perpanjangan['status_perpanjangan'] === 'Menunggu Surat Keterangan IKM'): ?>
+            <!-- Status: Menunggu Surat Keterangan -->
+            <div class="alert alert-info">
+              <i class="fa-solid fa-clock me-2"></i>
+              <strong>Status:</strong> Menunggu Surat Keterangan IKM dari Admin
+            </div>
+
+            <p class="text-muted mb-4">
+              <i class="fa-solid fa-info-circle me-2"></i>
+              Permohonan perpanjangan Anda telah diterima pada <strong><?php echo date('d/m/Y H:i', strtotime($perpanjangan['tgl_pengajuan'])); ?> WIB</strong>. Admin sedang memproses Surat Keterangan IKM untuk perpanjangan merek Anda.
+            </p>
+
+            <div class="row g-3">
+              <!-- Card Surat Permohonan -->
+              <div class="col-md-6">
+                <div class="card border-primary h-100">
+                  <div class="card-body">
+                    <h6 class="fw-bold mb-3">
+                      <i class="fa-solid fa-file-signature me-2 text-primary"></i>
+                      Surat Permohonan Perpanjangan
+                    </h6>
+                    <?php if ($surat_permohonan_perpanjangan && file_exists($surat_permohonan_perpanjangan['file_path'])): ?>
+                      <div class="alert alert-success mb-3">
+                        <i class="fa-solid fa-check-circle me-2"></i>
+                        <strong>File Tersedia</strong>
+                        <p class="mb-0 mt-2 small">
+                          <i class="fa-solid fa-calendar me-1"></i>
+                          Diupload: <?php echo date('d/m/Y H:i', strtotime($surat_permohonan_perpanjangan['tgl_upload'])); ?> WIB
+                        </p>
+                      </div>
+                      <div class="d-grid gap-2">
+                        <button class="btn btn-sm btn-outline-primary btn-view"
+                          data-src="<?php echo htmlspecialchars($surat_permohonan_perpanjangan['file_path']); ?>"
+                          data-title="Surat Permohonan Perpanjangan">
+                          <i class="bi bi-eye me-1"></i>Preview
+                        </button>
+                        <a class="btn btn-primary btn-sm" href="<?php echo htmlspecialchars($surat_permohonan_perpanjangan['file_path']); ?>" download>
+                          <i class="fa-solid fa-download me-1"></i> Download
+                        </a>
+                      </div>
+                    <?php else: ?>
+                      <div class="alert alert-warning mb-0">
+                        <i class="fa-solid fa-exclamation-triangle me-2"></i>
+                        <strong>Belum Tersedia</strong>
+                      </div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card Surat Keterangan IKM -->
+              <div class="col-md-6">
+                <div class="card border-success h-100">
+                  <div class="card-body">
+                    <h6 class="fw-bold mb-3">
+                      <i class="fa-solid fa-file-circle-check me-2 text-success"></i>
+                      Surat Keterangan IKM Perpanjangan
+                    </h6>
+                    <?php if ($surat_ikm_perpanjangan && file_exists($surat_ikm_perpanjangan['file_path'])): ?>
+                      <div class="alert alert-success mb-3">
+                        <i class="fa-solid fa-check-circle me-2"></i>
+                        <strong>File Tersedia</strong>
+                        <p class="mb-0 mt-2 small">
+                          <i class="fa-solid fa-calendar me-1"></i>
+                          Diupload: <?php echo date('d/m/Y H:i', strtotime($surat_ikm_perpanjangan['tgl_upload'])); ?> WIB
+                        </p>
+                      </div>
+                      <div class="d-grid gap-2">
+                        <button class="btn btn-sm btn-outline-success btn-view"
+                          data-src="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>"
+                          data-title="Surat Keterangan IKM Perpanjangan">
+                          <i class="bi bi-eye me-1"></i>Preview
+                        </button>
+                        <a class="btn btn-success btn-sm" href="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>" download>
+                          <i class="fa-solid fa-download me-1"></i> Download
+                        </a>
+                      </div>
+                    <?php else: ?>
+                      <div class="alert alert-warning mb-0">
+                        <i class="fa-solid fa-clock me-2"></i>
+                        <strong>Belum Tersedia</strong>
+                        <p class="mb-0 mt-2 small">Menunggu admin mengupload Surat Keterangan IKM</p>
+                      </div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          <?php elseif ($perpanjangan['status_perpanjangan'] === 'Surat Keterangan Terbit'): ?>
+            <!-- Status: Surat Keterangan Sudah Terbit -->
+            <div class="alert alert-success">
+              <i class="fa-solid fa-check-circle me-2"></i>
+              <strong>Status:</strong> Surat Keterangan IKM Perpanjangan Sudah Terbit
+            </div>
+
+            <p class="text-muted mb-4">
+              <i class="fa-solid fa-info-circle me-2"></i>
+              Selamat! Surat Keterangan IKM untuk perpanjangan merek Anda sudah terbit. Silakan download dokumen di bawah ini.
+            </p>
+
+            <div class="row g-3">
+              <!-- Card Surat Permohonan -->
+              <div class="col-md-6">
+                <div class="card border-primary h-100">
+                  <div class="card-body">
+                    <h6 class="fw-bold mb-3">
+                      <i class="fa-solid fa-file-signature me-2 text-primary"></i>
+                      Surat Permohonan Perpanjangan
+                    </h6>
+                    <?php if ($surat_permohonan_perpanjangan && file_exists($surat_permohonan_perpanjangan['file_path'])): ?>
+                      <div class="alert alert-success mb-3">
+                        <i class="fa-solid fa-check-circle me-2"></i>
+                        <strong>File Tersedia</strong>
+                      </div>
+                      <div class="d-grid gap-2">
+                        <button class="btn btn-sm btn-outline-primary btn-view"
+                          data-src="<?php echo htmlspecialchars($surat_permohonan_perpanjangan['file_path']); ?>"
+                          data-title="Surat Permohonan Perpanjangan">
+                          <i class="bi bi-eye me-1"></i>Preview
+                        </button>
+                        <a class="btn btn-primary btn-sm" href="<?php echo htmlspecialchars($surat_permohonan_perpanjangan['file_path']); ?>" download>
+                          <i class="fa-solid fa-download me-1"></i> Download
+                        </a>
+                      </div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card Surat Keterangan IKM -->
+              <div class="col-md-6">
+                <div class="card border-success h-100">
+                  <div class="card-body">
+                    <h6 class="fw-bold mb-3">
+                      <i class="fa-solid fa-file-circle-check me-2 text-success"></i>
+                      Surat Keterangan IKM Perpanjangan
+                    </h6>
+                    <?php if ($surat_ikm_perpanjangan && file_exists($surat_ikm_perpanjangan['file_path'])): ?>
+                      <div class="alert alert-success mb-3">
+                        <i class="fa-solid fa-check-circle me-2"></i>
+                        <strong>File Tersedia</strong>
+                      </div>
+                      <div class="d-grid gap-2">
+                        <button class="btn btn-sm btn-outline-success btn-view"
+                          data-src="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>"
+                          data-title="Surat Keterangan IKM Perpanjangan">
+                          <i class="bi bi-eye me-1"></i>Preview
+                        </button>
+                        <a class="btn btn-success btn-sm" href="<?php echo htmlspecialchars($surat_ikm_perpanjangan['file_path']); ?>" download>
+                          <i class="fa-solid fa-download me-1"></i> Download
+                        </a>
+                      </div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="alert alert-info mt-3">
+              <i class="fa-solid fa-lightbulb me-2"></i>
+              <strong>Informasi:</strong> Gunakan Surat Keterangan IKM ini untuk mengajukan perpanjangan merek Anda ke Kementerian Hukum dan HAM.
+            </div>
+          <?php endif; ?>
+        </div>
+      <?php endif; ?>
 
       <div class="info-card">
         <div class="info-header d-flex flex-column flex-md-row justify-content-between align-items-start">
@@ -1940,17 +1968,33 @@ try {
         console.log('Preview icon elements NOT found');
       }
     });
-    // Auto generate PDF setelah redirect dari perpanjangan.php
-    <?php if (isset($_SESSION['generate_pdf_id'])): ?>
-      const pdfId = <?php echo $_SESSION['generate_pdf_id']; ?>;
+    // Show alert for new perpanjangan
+    <?php if (isset($_SESSION['baru_perpanjangan']) && $_SESSION['baru_perpanjangan'] === true): ?>
+      <?php
+      unset($_SESSION['baru_perpanjangan']);
+      $id_perpanjangan_show = isset($_SESSION['id_perpanjangan_baru']) ? $_SESSION['id_perpanjangan_baru'] : 0;
+      unset($_SESSION['id_perpanjangan_baru']);
+      ?>
 
-      // Hapus session flag
-      <?php unset($_SESSION['generate_pdf_id']); ?>
-
-      // Generate PDF di background
       setTimeout(function() {
-        window.open('generate-surat-perpanjangan.php?id=' + pdfId, '_blank');
-      }, 1000);
+        const message = 'Permohonan perpanjangan berhasil diajukan!\n\nSurat permohonan perpanjangan telah otomatis dibuat.\nAnda dapat melihat dan mendownload surat di bagian "Status Perpanjangan Sertifikat" di bawah.';
+        showAlert(message, 'success');
+
+        // Scroll ke section perpanjangan
+        setTimeout(function() {
+          const perpanjanganSection = document.querySelector('.info-card.mt-4');
+          if (perpanjanganSection) {
+            perpanjanganSection.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start'
+            });
+            perpanjanganSection.style.border = '3px solid #28a745';
+            setTimeout(() => {
+              perpanjanganSection.style.border = '';
+            }, 3000);
+          }
+        }, 500);
+      }, 500);
     <?php endif; ?>
   </script>
 

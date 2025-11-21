@@ -36,7 +36,7 @@ try {
     $query_difasilitasi = "SELECT COUNT(*) as jumlah_difasilitasi 
                            FROM pendaftaran 
                            WHERE merek_difasilitasi IS NOT NULL 
-                           AND YEAR(tgl_daftar) = :tahu n";
+                           AND YEAR(tgl_daftar) = :tahun";
 
     $stmt = $pdo->prepare($query_difasilitasi);
     $stmt->execute(['tahun' => $tahun_sekarang]);

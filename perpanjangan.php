@@ -12,9 +12,210 @@ if (!isset($_SESSION['NIK_NIP'])) {
 
 $NIK = $_SESSION['NIK_NIP'];
 
+// ===== PROSES SUBMIT FORM =====
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['signature_data'])) {
+    set_error_handler(function($errno, $errstr, $errfile, $errline) {
+        error_log("PHP Error [$errno]: $errstr in $errfile on line $errline");
+        throw new Exception("PHP Error: $errstr");
+    });
+
+    try {
+        error_log("=== START PERPANJANGAN PROCESS ===");
+        error_log("NIK: " . $NIK);
+
+        $signature_data = $_POST['signature_data'] ?? '';
+        if (empty($signature_data)) {
+            throw new Exception('Data tanda tangan kosong atau tidak valid');
+        }
+
+        if (strlen($signature_data) < 100) {
+            throw new Exception('Tanda tangan tidak valid (terlalu kecil)');
+        }
+
+        if (!preg_match('/^data:image\/png;base64,/', $signature_data)) {
+            throw new Exception('Format tanda tangan tidak valid (harus PNG base64)');
+        }
+
+        // Start transaction
+        $pdo->beginTransaction();
+        error_log("Transaction started");
+
+        // Ambil data pendaftaran terakhir
+        $stmt = $pdo->prepare("
+            SELECT p.*, u.id_usaha
+            FROM pendaftaran p
+            LEFT JOIN datausaha u ON p.id_usaha = u.id_usaha
+            WHERE p.NIK = :nik 
+            ORDER BY p.tgl_daftar DESC
+            LIMIT 1
+        ");
+        $stmt->execute(['nik' => $NIK]);
+        $pendaftaran_lama = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$pendaftaran_lama) {
+            throw new Exception('Data pendaftaran tidak ditemukan untuk NIK: ' . $NIK);
+        }
+        error_log("Pendaftaran Lama ID: " . $pendaftaran_lama['id_pendaftaran']);
+        error_log("ID Usaha: " . $pendaftaran_lama['id_usaha']);
+
+        if (empty($pendaftaran_lama['id_pendaftaran']) || empty($pendaftaran_lama['id_usaha'])) {
+            throw new Exception('Data pendaftaran tidak lengkap');
+        }
+
+        // Insert data perpanjangan
+        $tgl_pengajuan = date('Y-m-d H:i:s');
+        error_log("Tanggal Pengajuan: " . $tgl_pengajuan);
+
+        $stmt = $pdo->prepare("
+            INSERT INTO perpanjangan (id_pendaftaran_lama, NIK, id_usaha, tgl_pengajuan, status_perpanjangan)
+            VALUES (?, ?, ?, ?, 'Menunggu Surat Keterangan IKM')
+        ");
+        
+        $result = $stmt->execute([
+            $pendaftaran_lama['id_pendaftaran'],
+            $NIK,
+            $pendaftaran_lama['id_usaha'],
+            $tgl_pengajuan
+        ]);
+
+        if (!$result) {
+            $errorInfo = $stmt->errorInfo();
+            error_log("Execute error: " . json_encode($errorInfo));
+            throw new Exception('Gagal menyimpan data perpanjangan: ' . $errorInfo[2]);
+        }
+
+        $id_perpanjangan = $pdo->lastInsertId();
+        error_log("ID Perpanjangan Baru: " . $id_perpanjangan);
+
+        if (!$id_perpanjangan || $id_perpanjangan <= 0) {
+            throw new Exception('Gagal mendapatkan ID perpanjangan dari database');
+        }
+
+        // ===== SIMPAN TANDA TANGAN DIGITAL =====
+        $signature_data = str_replace('data:image/png;base64,', '', $signature_data);
+        $signature_data = str_replace(' ', '+', $signature_data);
+        $signature_decoded = base64_decode($signature_data, true);
+
+        if (!$signature_decoded) {
+            throw new Exception('Gagal decode tanda tangan - format base64 tidak valid');
+        }
+        error_log("Signature decoded, size: " . strlen($signature_decoded) . " bytes");
+
+        if (strlen($signature_decoded) < 100) {
+            throw new Exception('Ukuran tanda tangan terlalu kecil (corrupted data)');
+        }
+
+        // Simpan file tanda tangan
+        $folder_ttd = "uploads/ttd_perpanjangan/ttd_{$NIK}/";
+        if (!file_exists($folder_ttd)) {
+            $mkdir_result = mkdir($folder_ttd, 0777, true);
+            if (!$mkdir_result) {
+                throw new Exception('Gagal membuat folder: ' . $folder_ttd);
+            }
+            error_log("Folder created: " . $folder_ttd);
+        }
+
+        $filename_ttd = "ttd_{$NIK}_" . time() . ".png";
+        $filepath_ttd = $folder_ttd . $filename_ttd;
+        
+        $bytes_written = file_put_contents($filepath_ttd, $signature_decoded);
+        if ($bytes_written === false || $bytes_written === 0) {
+            throw new Exception('Gagal menyimpan file tanda tangan di: ' . $filepath_ttd);
+        }
+        error_log("File tanda tangan tersimpan: " . $filepath_ttd . " (" . $bytes_written . " bytes)");
+
+        if (!file_exists($filepath_ttd)) {
+            throw new Exception('File tanda tangan tidak ditemukan setelah disimpan: ' . $filepath_ttd);
+        }
+
+        // ===== SIMPAN TANDA TANGAN KE LAMPIRAN (id_jenis_file = 16) =====
+        $tgl_upload_ttd = date('Y-m-d H:i:s');
+        $stmt = $pdo->prepare("
+            INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path) 
+            VALUES (?, 16, ?, ?)
+        ");
+        $result_ttd = $stmt->execute([
+            -$id_perpanjangan,  // ID negatif untuk perpanjangan
+            $tgl_upload_ttd,
+            $filepath_ttd
+        ]);
+
+        if (!$result_ttd) {
+            throw new Exception('Gagal menyimpan tanda tangan ke lampiran');
+        }
+        error_log("Tanda tangan berhasil disimpan ke lampiran dengan id_jenis_file = 16");
+
+        // ===== GENERATE SURAT PERPANJANGAN =====
+        try {
+            error_log("Starting PDF generation...");
+            require_once __DIR__ . '/vendor/autoload.php';
+            define('GENERATE_FROM_PERPANJANGAN', true);
+            
+            // Set variabel untuk generate-surat-perpanjangan.php
+            $id_perpanjangan_global = $id_perpanjangan;
+            $pdo_global = $pdo;
+            $NIK_global = $NIK;
+            
+            require_once('generate-surat-perpanjangan.php');
+            error_log("PDF generation completed successfully");
+        } catch (Exception $e) {
+            error_log("Warning: PDF generation failed: " . $e->getMessage());
+            error_log("Stack: " . $e->getTraceAsString());
+            // Lanjutkan meski PDF gagal, data tanda tangan sudah tersimpan
+        }
+
+        // COMMIT TRANSAKSI
+        $pdo->commit();
+        error_log("Transaction committed successfully");
+
+        $_SESSION['alert_message'] = 'Permohonan perpanjangan berhasil diajukan! Surat permohonan telah dibuat.';
+        $_SESSION['alert_type'] = 'success';
+        $_SESSION['baru_perpanjangan'] = true;
+        $_SESSION['id_perpanjangan_baru'] = $id_perpanjangan;
+
+        error_log("=== PERPANJANGAN PROCESS COMPLETED SUCCESSFULLY ===");
+
+        session_write_close();
+
+        // REDIRECT KE STATUS SELEKSI
+        header("Location: status-seleksi-pendaftaran.php", true, 302);
+        exit();
+
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("=== PDO ERROR ===");
+        error_log("Error Code: " . $e->getCode());
+        error_log("Error Message: " . $e->getMessage());
+        error_log("Error Trace: " . $e->getTraceAsString());
+        
+        $_SESSION['alert_message'] = 'Terjadi kesalahan database: ' . $e->getMessage();
+        $_SESSION['alert_type'] = 'danger';
+        session_write_close();
+        header("Location: perpanjangan.php", true, 302);
+        exit();
+        
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("=== GENERAL ERROR ===");
+        error_log("Error Message: " . $e->getMessage());
+        error_log("Error Trace: " . $e->getTraceAsString());
+        
+        $_SESSION['alert_message'] = 'Terjadi kesalahan: ' . $e->getMessage();
+        $_SESSION['alert_type'] = 'danger';
+        session_write_close();
+        header("Location: perpanjangan.php", true, 302);
+        exit();
+    } finally {
+        restore_error_handler();
+    }
+}
+
 // ===== AMBIL DATA PENDAFTARAN TERAKHIR =====
 try {
-    // Ambil data pendaftaran terakhir (apapun statusnya)
     $stmt = $pdo->prepare("
         SELECT p.*, 
                u.nama_usaha, u.rt_rw AS usaha_rt_rw, u.kel_desa, u.kecamatan, u.no_telp_perusahaan,
@@ -33,7 +234,7 @@ try {
     ");
     $stmt->execute(['nik' => $NIK]);
     $pendaftaran = $stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if (!$pendaftaran) {
         $_SESSION['alert_message'] = 'Anda belum memiliki data pendaftaran. Silakan daftar terlebih dahulu.';
         $_SESSION['alert_type'] = 'warning';
@@ -41,7 +242,7 @@ try {
         exit();
     }
 
-    // Ambil sertifikat lama dari database (id_jenis_file = 15)
+    // Ambil sertifikat lama
     $stmt = $pdo->prepare("
         SELECT file_path, tgl_upload 
         FROM lampiran 
@@ -65,7 +266,7 @@ try {
     // Tentukan merek yang difasilitasi
     $merek_difasilitasi = '';
     $no_merek_difasilitasi = 1;
-    
+
     if ($pendaftaran['merek_difasilitasi'] == 1) {
         $merek_difasilitasi = $pendaftaran['nama_merek1'];
         $no_merek_difasilitasi = 1;
@@ -79,131 +280,12 @@ try {
         $merek_difasilitasi = $pendaftaran['nama_merek1'];
         $no_merek_difasilitasi = 1;
     }
-
 } catch (PDOException $e) {
     error_log("Error fetching data: " . $e->getMessage());
     $_SESSION['alert_message'] = 'Terjadi kesalahan saat mengambil data: ' . $e->getMessage();
     $_SESSION['alert_type'] = 'danger';
     header("Location: status-seleksi-pendaftaran.php");
     exit();
-}
-
-// ===== PROSES FORM SUBMISSION =====
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    try {
-        // Validasi tanda tangan digital
-        if (empty($_POST['signature_data'])) {
-            throw new Exception("Tanda tangan digital wajib dibuat!");
-        }
-
-        $signature_data = $_POST['signature_data'];
-
-        // Mulai transaction
-        $pdo->beginTransaction();
-
-        // 1. Buat data usaha baru (copy dari yang lama)
-        $stmt = $pdo->prepare("
-            INSERT INTO datausaha (
-                nama_usaha, rt_rw, kel_desa, kecamatan, no_telp_perusahaan, 
-                hasil_produk, jml_tenaga_kerja, kapasitas_produk, omset_perbulan, 
-                wilayah_pemasaran, legalitas
-            )
-            SELECT 
-                nama_usaha, rt_rw, kel_desa, kecamatan, no_telp_perusahaan, 
-                hasil_produk, jml_tenaga_kerja, kapasitas_produk, omset_perbulan, 
-                wilayah_pemasaran, legalitas
-            FROM datausaha 
-            WHERE id_usaha = ?
-        ");
-        $stmt->execute([$pendaftaran['id_usaha']]);
-        $id_usaha_baru = $pdo->lastInsertId();
-
-        // 2. Buat pendaftaran perpanjangan baru
-        $tgl_daftar = date('Y-m-d H:i:s');
-        $status_validasi = 'Pengecekan Berkas';
-
-        $stmt = $pdo->prepare("
-            INSERT INTO pendaftaran (NIK, id_usaha, tgl_daftar, status_validasi, merek_difasilitasi)
-            VALUES (?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([$NIK, $id_usaha_baru, $tgl_daftar, $status_validasi, $no_merek_difasilitasi]);
-        $id_pendaftaran_baru = $pdo->lastInsertId();
-
-        // 3. Copy data merek
-        $stmt = $pdo->prepare("
-            INSERT INTO merek (
-                id_pendaftaran, kelas_merek, nama_merek1, nama_merek2, nama_merek3, 
-                logo1, logo2, logo3
-            )
-            SELECT 
-                ?, kelas_merek, nama_merek1, nama_merek2, nama_merek3, 
-                logo1, logo2, logo3
-            FROM merek 
-            WHERE id_pendaftaran = ?
-        ");
-        $stmt->execute([$id_pendaftaran_baru, $pendaftaran['id_pendaftaran']]);
-
-        // 4. Simpan tanda tangan digital sebagai gambar
-        $folder = "uploads/tanda_tangan/ttd_{$NIK}/";
-        if (!file_exists($folder)) {
-            mkdir($folder, 0777, true);
-        }
-
-        // Decode base64 image
-        $signature_data = str_replace('data:image/png;base64,', '', $signature_data);
-        $signature_data = str_replace(' ', '+', $signature_data);
-        $signature_decoded = base64_decode($signature_data);
-
-        $filename = "ttd_{$NIK}_" . time() . ".png";
-        $target = $folder . $filename;
-
-        if (file_put_contents($target, $signature_decoded)) {
-            $tgl_upload = date('Y-m-d H:i:s');
-
-            // Simpan tanda tangan ke tabel lampiran (id_jenis_file = 16 untuk tanda tangan)
-            $stmt = $pdo->prepare("
-                INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path)
-                VALUES (?, 16, ?, ?)
-            ");
-            $stmt->execute([$id_pendaftaran_baru, $tgl_upload, $target]);
-        } else {
-            throw new Exception("Gagal menyimpan tanda tangan digital");
-        }
-
-        // 5. Copy sertifikat lama ke pendaftaran baru (jika ada)
-        if ($sertifikat_lama) {
-            $stmt = $pdo->prepare("
-                INSERT INTO lampiran (id_pendaftaran, id_jenis_file, tgl_upload, file_path)
-                VALUES (?, 15, ?, ?)
-            ");
-            $stmt->execute([$id_pendaftaran_baru, date('Y-m-d H:i:s'), $sertifikat_lama['file_path']]);
-        }
-
-        // Commit transaction
-        $pdo->commit();
-
-        // Generate PDF Surat Perpanjangan
-        $_SESSION['generate_pdf_id'] = $id_pendaftaran_baru;
-
-        $_SESSION['alert_message'] = "Permohonan perpanjangan sertifikat berhasil diajukan!\n\nSilakan cek status pengajuan Anda secara berkala.\n\nTerima kasih.";
-        $_SESSION['alert_type'] = 'success';
-
-        header("Location: status-seleksi-pendaftaran.php");
-        exit();
-
-    } catch (Exception $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-
-        error_log("Error perpanjangan: " . $e->getMessage());
-
-        $_SESSION['alert_message'] = "Terjadi kesalahan: " . $e->getMessage() . "\n\nSilakan coba lagi.";
-        $_SESSION['alert_type'] = 'danger';
-
-        header("Location: " . $_SERVER['PHP_SELF']);
-        exit();
-    }
 }
 ?>
 
@@ -274,25 +356,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             border: 1px solid #dee2e6;
             border-radius: 0.25rem;
         }
-
-        .certificate-preview {
-            margin-top: 1rem;
-            padding: 1rem;
-            border: 1px solid #28a745;
-            border-radius: 0.5rem;
-            background-color: #d4edda;
-        }
-
-        .certificate-preview .file-info {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .certificate-preview i {
-            font-size: 2rem;
-            color: #dc3545;
-        }
     </style>
 </head>
 
@@ -360,7 +423,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <form method="POST" id="formPerpanjangan">
                         <!-- Data Usaha (Statis) -->
                         <h5 class="section-title">Data Usaha</h5>
-                        
+
                         <div class="mb-3">
                             <label class="form-label">Nama Usaha</label>
                             <div class="data-static"><?php echo htmlspecialchars($pendaftaran['nama_usaha']); ?></div>
@@ -390,7 +453,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                         <!-- Data Pemilik (Statis) -->
                         <h5 class="section-title mt-4">Data Pemilik</h5>
-                        
+
                         <div class="mb-3">
                             <label class="form-label">Nama Pemilik</label>
                             <div class="data-static"><?php echo htmlspecialchars($pendaftaran['nama_lengkap']); ?></div>
@@ -431,7 +494,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                         <!-- Informasi Merek (Statis) -->
                         <h5 class="section-title mt-4">Informasi Merek</h5>
-                        
+
                         <div class="mb-3">
                             <label class="form-label">Merek yang Difasilitasi</label>
                             <div class="data-static">
@@ -443,58 +506,58 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             </div>
                         </div>
 
-                        <!-- Sertifikat Lama dari Database -->
+                        <!-- Sertifikat Lama -->
                         <?php if ($sertifikat_lama): ?>
-                        <h5 class="section-title mt-4">Sertifikat yang Terdaftar</h5>
-                        <div class="row g-3">
-                            <div class="col-md-12">
-                                <div class="card border-success">
-                                    <div class="card-body">
-                                        <h6 class="fw-bold mb-3">
-                                            <i class="fa-solid fa-certificate me-2 text-success"></i>
-                                            Sertifikat Merek Terdaftar
-                                        </h6>
-                                        <div class="alert alert-success mb-3">
-                                            <i class="fa-solid fa-check-circle me-2"></i>
-                                            <strong>File Tersedia</strong>
-                                            <p class="mb-0 mt-2 small">
-                                                <i class="fa-solid fa-calendar me-1"></i>
-                                                Diupload: <?php echo date('d/m/Y H:i', strtotime($sertifikat_lama['tgl_upload'])); ?> WIB
-                                            </p>
-                                        </div>
-                                        <div class="d-grid gap-2">
-                                            <button type="button" class="btn btn-sm btn-outline-success btn-view-sertifikat"
-                                                data-src="<?php echo htmlspecialchars($sertifikat_lama['file_path']); ?>"
-                                                data-title="Sertifikat Merek">
-                                                <i class="fas fa-eye me-1"></i> Preview
-                                            </button>
-                                            <a class="btn btn-success btn-sm" href="<?php echo htmlspecialchars($sertifikat_lama['file_path']); ?>" target="_blank" download>
-                                                <i class="fa-solid fa-download me-1"></i> Download Sertifikat
-                                            </a>
+                            <h5 class="section-title mt-4">Sertifikat yang Terdaftar</h5>
+                            <div class="row g-3">
+                                <div class="col-md-12">
+                                    <div class="card border-success">
+                                        <div class="card-body">
+                                            <h6 class="fw-bold mb-3">
+                                                <i class="fa-solid fa-certificate me-2 text-success"></i>
+                                                Sertifikat Merek Terdaftar
+                                            </h6>
+                                            <div class="alert alert-success mb-3">
+                                                <i class="fa-solid fa-check-circle me-2"></i>
+                                                <strong>File Tersedia</strong>
+                                                <p class="mb-0 mt-2 small">
+                                                    <i class="fa-solid fa-calendar me-1"></i>
+                                                    Diupload: <?php echo date('d/m/Y H:i', strtotime($sertifikat_lama['tgl_upload'])); ?> WIB
+                                                </p>
+                                            </div>
+                                            <div class="d-grid gap-2">
+                                                <button type="button" class="btn btn-sm btn-outline-success btn-view-sertifikat"
+                                                    data-src="<?php echo htmlspecialchars($sertifikat_lama['file_path']); ?>"
+                                                    data-title="Sertifikat Merek">
+                                                    <i class="fas fa-eye me-1"></i> Preview
+                                                </button>
+                                                <a class="btn btn-success btn-sm" href="<?php echo htmlspecialchars($sertifikat_lama['file_path']); ?>" target="_blank" download>
+                                                    <i class="fa-solid fa-download me-1"></i> Download Sertifikat
+                                                </a>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
                         <?php else: ?>
-                        <div class="alert alert-warning mt-4">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            Tidak ada sertifikat lama yang terdaftar di database. Silakan hubungi admin jika Anda sudah pernah mengupload sertifikat.
-                        </div>
+                            <div class="alert alert-warning mt-4">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                Tidak ada sertifikat lama yang terdaftar. Silakan hubungi admin.
+                            </div>
                         <?php endif; ?>
 
                         <!-- Tanda Tangan Digital -->
                         <h5 class="section-title mt-4">Tanda Tangan Digital</h5>
-                        
+
                         <div class="alert alert-info">
                             <i class="fas fa-info-circle me-2"></i>
-                            <strong>Petunjuk:</strong> Buat tanda tangan Anda di area di bawah ini menggunakan mouse atau sentuhan layar. Tanda tangan ini akan digunakan sebagai bukti persetujuan permohonan perpanjangan.
+                            <strong>Petunjuk:</strong> Buat tanda tangan Anda di area di bawah ini. Tanda tangan ini akan digunakan sebagai bukti persetujuan permohonan perpanjangan.
                         </div>
 
                         <div class="signature-container">
                             <label class="form-label">Buat Tanda Tangan Anda <span class="text-danger">*</span></label>
                             <canvas id="signature-pad" width="600" height="200"></canvas>
-                            
+
                             <div class="signature-buttons">
                                 <button type="button" class="btn btn-secondary btn-sm" id="clear-signature">
                                     <i class="fas fa-eraser me-1"></i> Hapus
@@ -506,7 +569,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                             <div class="signature-preview" id="signature-preview">
                                 <label class="form-label">Preview Tanda Tangan:</label>
-                                <img id="signature-image" src="" alt="Tanda Tangan">
+                                <img id="signature-image" src="/placeholder.svg" alt="Tanda Tangan">
                             </div>
 
                             <input type="hidden" name="signature_data" id="signature-data" required>
@@ -539,7 +602,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
     </footer>
 
-    <!-- Modal View Foto/PDF -->
+    <!-- Modal View -->
     <div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
@@ -548,12 +611,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-3">
-                    <!-- Container untuk gambar -->
                     <div id="imageContainer" style="display: none;">
-                        <img id="modalImage" src="" alt="Preview" class="img-fluid rounded" style="max-height: 50vh; width: 100%; object-fit: contain;" />
+                        <img id="modalImage" src="/placeholder.svg" alt="Preview" class="img-fluid rounded" style="max-height: 50vh; width: 100%; object-fit: contain;" />
                     </div>
-
-                    <!-- Container untuk PDF -->
                     <div id="pdfContainer" style="display: none;">
                         <iframe id="modalPdf" src="" style="width: 100%; height: 50vh; border: 1px solid #dee2e6; border-radius: 0.375rem;"></iframe>
                     </div>
@@ -569,48 +629,43 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Alert Modal Functions
+        // Alert Modal
         function showAlert(message, type = 'warning') {
             const icon = type === 'danger' ? '❌' : type === 'success' ? '✅' : '⚠️';
-            
-            const alertModal = `
-                <div class="modal fade" id="alertModal" tabindex="-1">
-                    <div class="modal-dialog modal-dialog-centered modal-sm">
-                        <div class="modal-content">
-                            <div class="modal-body text-center p-4">
-                                <div class="fs-1 mb-3">${icon}</div>
-                                <p class="mb-0" style="white-space: pre-line;">${message}</p>
-                            </div>
-                            <div class="modal-footer border-0 justify-content-center">
-                                <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
+            const alertModal = ``
+                + '<div class="modal fade" id="alertModal" tabindex="-1">'
+                + '    <div class="modal-dialog modal-dialog-centered modal-sm">'
+                + '        <div class="modal-content">'
+                + '            <div class="modal-body text-center p-4">'
+                + '                <div class="fs-1 mb-3">' + icon + '</div>'
+                + '                <p class="mb-0" style="white-space: pre-line;">' + message + '</p>'
+                + '            </div>'
+                + '            <div class="modal-footer border-0 justify-content-center">'
+                + '                <button type="button" class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button>'
+                + '            </div>'
+                + '        </div>'
+                + '    </div>'
+                + '</div>';
             const existingModal = document.getElementById('alertModal');
             if (existingModal) existingModal.remove();
-            
             document.body.insertAdjacentHTML('beforeend', alertModal);
             const modal = new bootstrap.Modal(document.getElementById('alertModal'));
             modal.show();
-            
-            document.getElementById('alertModal').addEventListener('hidden.bs.modal', function() {
+            modal.addEventListener('hidden.bs.modal', function() {
                 this.remove();
             });
         }
 
-        // Show session alert if exists
+        // Session alert
         <?php if (isset($_SESSION['alert_message'])): ?>
             showAlert(<?php echo json_encode($_SESSION['alert_message']); ?>, '<?php echo $_SESSION['alert_type']; ?>');
-            <?php 
+            <?php
             unset($_SESSION['alert_message']);
             unset($_SESSION['alert_type']);
             ?>
         <?php endif; ?>
 
-        // Signature Pad Implementation
+        // Signature Pad
         const canvas = document.getElementById('signature-pad');
         const ctx = canvas.getContext('2d');
         const clearBtn = document.getElementById('clear-signature');
@@ -624,22 +679,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         let lastX = 0;
         let lastY = 0;
 
-        // Set canvas background to white
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Drawing settings
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 2;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        // Get mouse/touch position
         function getPosition(e) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
-            
             if (e.touches) {
                 return {
                     x: (e.touches[0].clientX - rect.left) * scaleX,
@@ -652,13 +702,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             };
         }
 
-        // Mouse events
         canvas.addEventListener('mousedown', startDrawing);
         canvas.addEventListener('mousemove', draw);
         canvas.addEventListener('mouseup', stopDrawing);
         canvas.addEventListener('mouseout', stopDrawing);
-
-        // Touch events
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             startDrawing(e);
@@ -678,14 +725,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         function draw(e) {
             if (!isDrawing) return;
-            
             const pos = getPosition(e);
-            
             ctx.beginPath();
             ctx.moveTo(lastX, lastY);
             ctx.lineTo(pos.x, pos.y);
             ctx.stroke();
-            
             lastX = pos.x;
             lastY = pos.y;
         }
@@ -694,7 +738,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             isDrawing = false;
         }
 
-        // Clear signature
         clearBtn.addEventListener('click', () => {
             ctx.fillStyle = 'white';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -703,112 +746,63 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             btnSubmit.disabled = true;
         });
 
-        // Save signature
         saveBtn.addEventListener('click', () => {
-            // Check if canvas is empty
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const pixels = imageData.data;
-            let isEmpty = true;
-            
-            for (let i = 0; i < pixels.length; i += 4) {
-                if (pixels[i] < 255 || pixels[i+1] < 255 || pixels[i+2] < 255) {
-                    isEmpty = false;
-                    break;
-                }
-            }
-            
-            if (isEmpty) {
-                showAlert('Silakan buat tanda tangan terlebih dahulu!', 'danger');
-                return;
-            }
-
-            // Convert canvas to base64
-            const dataURL = canvas.toDataURL('image/png');
-            signatureData.value = dataURL;
-            
-            // Show preview
-            signatureImage.src = dataURL;
+            const imageData = canvas.toDataURL('image/png');
+            signatureData.value = imageData;
+            signatureImage.src = imageData;
             signaturePreview.style.display = 'block';
-            
-            // Enable submit button
             btnSubmit.disabled = false;
-            
             showAlert('Tanda tangan berhasil disimpan!', 'success');
         });
 
-        // Form validation
         document.getElementById('formPerpanjangan').addEventListener('submit', function(e) {
             if (!signatureData.value) {
                 e.preventDefault();
                 showAlert('Tanda tangan digital wajib dibuat dan disimpan!', 'danger');
                 return false;
             }
-
-            // Confirm before submit
             if (!confirm('Apakah Anda yakin data yang ditampilkan masih valid dan ingin mengajukan perpanjangan sertifikat?')) {
                 e.preventDefault();
                 return false;
             }
-
-            // Disable button to prevent double submit
             btnSubmit.disabled = true;
             btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin pe-2"></i> Memproses...';
         });
 
-        // Handler untuk Preview Sertifikat
+        // Preview sertifikat
         document.querySelectorAll('.btn-view-sertifikat').forEach(btn => {
             btn.addEventListener('click', function(e) {
-                e.preventDefault(); // Prevent form submission
-                e.stopPropagation(); // Stop event bubbling
-                
+                e.preventDefault();
+                e.stopPropagation();
                 const src = this.getAttribute('data-src');
                 const title = this.getAttribute('data-title');
-
                 const modalTitle = document.getElementById('modalTitle');
                 const downloadBtn = document.getElementById('downloadBtn');
                 const imageContainer = document.getElementById('imageContainer');
                 const pdfContainer = document.getElementById('pdfContainer');
                 const modalImg = document.getElementById('modalImage');
                 const modalPdf = document.getElementById('modalPdf');
-
                 modalTitle.textContent = title;
                 downloadBtn.href = src;
-
-                // Cek ekstensi file
                 const fileExtension = src.split('.').pop().toLowerCase();
-
                 if (fileExtension === 'pdf') {
-                    // Tampilkan PDF
                     imageContainer.style.display = 'none';
                     pdfContainer.style.display = 'block';
-                    modalPdf.src = src + '#toolbar=0'; // Hide PDF toolbar
+                    modalPdf.src = src + '#toolbar=0';
                 } else {
-                    // Tampilkan gambar
                     pdfContainer.style.display = 'none';
                     imageContainer.style.display = 'block';
                     modalImg.src = src;
                 }
-
-                // Buka modal
                 const modal = new bootstrap.Modal(document.getElementById('imageModal'));
                 modal.show();
             });
         });
 
-        // Bersihkan saat modal ditutup
         const imageModal = document.getElementById('imageModal');
         imageModal.addEventListener('hidden.bs.modal', function() {
             document.getElementById('modalPdf').src = '';
             document.getElementById('modalImage').src = '';
-        });
-
-        // Force z-index saat modal terbuka
-        imageModal.addEventListener('show.bs.modal', function() {
-            this.style.zIndex = '1055';
-            setTimeout(() => {
-                const backdrop = document.querySelector('.modal-backdrop');
-                if (backdrop) backdrop.style.zIndex = '1050';
-            }, 50);
         });
     </script>
 </body>
